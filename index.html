@@ -60,7 +60,7 @@
             width: 100%;
             max-width: 1600px; 
             margin: 0 auto;
-            padding: 40px 20px;
+            padding: 30px 20px;
             box-sizing: border-box;
             z-index: 1;
         }
@@ -69,44 +69,71 @@
         #player-section {
             display: flex;
             flex-direction: column;
-            align-items: center;
+            align-items: flex-start;
             flex: 0 0 576px;
             position: sticky;
             top: 20px;
         }
 
+        .header-controls {
+            display: flex;
+            align-items: flex-end;
+            gap: 20px;
+            width: 576px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+        }
+
         .title-container {
             display: flex;
             flex-direction: column;
-            align-items: center;
-            margin-bottom: 25px;
+            align-items: flex-start;
         }
 
         .scratch-logo {
             font-family: 'Orbitron', sans-serif;
-            font-size: 1.1rem; /* 小さく調整 */
+            font-size: 0.9rem;
             color: #ffab19;
-            letter-spacing: 0.4em;
+            letter-spacing: 0.3em;
             font-weight: 900;
             text-shadow: 0 0 10px rgba(255, 171, 25, 0.6);
-            margin-bottom: -8px;
+            margin-bottom: -5px;
         }
 
         .mod-title {
             font-family: 'Cinzel Decorative', serif;
-            font-size: 3.5rem; /* さらに小さく、目立ちすぎないように */
+            font-size: 2.8rem;
             font-weight: 900;
             color: #fff;
-            letter-spacing: 0.15em;
+            letter-spacing: 0.1em;
             text-shadow: 0 0 20px rgba(0, 212, 255, 0.8);
             line-height: 1;
+        }
+
+        .top-tools {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex-grow: 1;
+        }
+
+        .fps-display-top {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.75rem;
+            color: #00d4ff;
+            font-weight: bold;
+            letter-spacing: 0.1em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
         #canvas-wrapper {
             width: 576px;
             height: 432px;
             position: relative;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
 
         #canvas-container {
@@ -134,37 +161,28 @@
             align-items: center;
             gap: 15px;
             background: rgba(10, 10, 35, 0.95);
-            padding: 8px 18px;
+            padding: 10px 18px;
             border: 2px solid #00d4ff;
-            border-bottom: none;
             width: 576px;
-        }
-
-        .controls-panel {
-            background: rgba(10, 10, 35, 0.95);
-            padding: 15px;
-            width: 576px;
-            border: 2px solid #00d4ff;
-            border-top: none;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
         }
 
         /* 右側のガイドセクション（横長・縦短） */
         #guide-section {
             flex: 1;
-            max-width: 900px; /* 横に長く広げる */
+            max-width: 900px;
             background: rgba(5, 15, 45, 0.85);
             backdrop-filter: blur(15px);
             border: 1px solid rgba(0, 212, 255, 0.3);
             border-left: 6px solid #00d4ff;
-            padding: 25px 35px; /* 上下パディングを減らして縦を短く */
+            padding: 25px 35px;
             border-radius: 4px;
             box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
         }
 
         .guide-h2 {
             font-family: 'Orbitron', sans-serif;
-            font-size: 1.2rem; /* 少しコンパクトに */
+            font-size: 1.2rem;
             color: #00d4ff;
             border-bottom: 1px solid rgba(0, 212, 255, 0.4);
             margin-bottom: 15px;
@@ -175,7 +193,6 @@
             letter-spacing: 0.1em;
         }
 
-        /* ガイド項目を横並びっぽく配置するためのグリッド（縦短化のため） */
         .guide-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -230,13 +247,13 @@
         }
 
         .status-light {
-            width: 10px;
-            height: 10px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             background: #00ff88;
             box-shadow: 0 0 10px #00ff88;
             display: inline-block;
-            margin-right: 10px;
+            margin-right: 8px;
         }
 
         .icon-btn {
@@ -257,18 +274,39 @@
         input[type="range"] {
             -webkit-appearance: none;
             background: #08081a;
-            height: 6px;
-            border-radius: 3px;
+            height: 4px;
+            border-radius: 2px;
             cursor: pointer;
+            width: 100%;
         }
 
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
-            width: 18px;
-            height: 18px;
+            width: 14px;
+            height: 14px;
             background: #00d4ff;
             border-radius: 50%;
-            box-shadow: 0 0 10px #00d4ff;
+            box-shadow: 0 0 8px #00d4ff;
+        }
+
+        /* カスタムファイル入力ボタン */
+        .custom-file-upload {
+            display: inline-block;
+            padding: 4px 12px;
+            cursor: pointer;
+            background: #00d4ff;
+            color: #000;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+            transition: all 0.2s;
+            text-align: center;
+            width: fit-content;
+        }
+        .custom-file-upload:hover {
+            filter: brightness(1.2);
+            box-shadow: 0 0 15px rgba(0, 212, 255, 0.4);
         }
 
         @media (max-width: 1300px) {
@@ -296,9 +334,28 @@
     <div id="main-layout">
         <!-- PLAYER SECTION -->
         <section id="player-section">
-            <div class="title-container">
-                <div class="scratch-logo">SCRATCH</div>
-                <h1 class="mod-title">Night-Mod</h1>
+            <div class="header-controls">
+                <div class="title-container">
+                    <div class="scratch-logo">SCRATCH</div>
+                    <h1 class="mod-title">Night-Mod</h1>
+                </div>
+                
+                <div class="top-tools">
+                    <label class="custom-file-upload">
+                        <input type="file" id="file-input" accept=".sb3" class="hidden"/>
+                        Choose Project
+                    </label>
+                    <div class="fps-display-top">
+                        <span>CLOCK: <span id="fps-value" class="text-white">30</span> FPS</span>
+                        <input type="range" id="fps-slider" min="30" max="120" value="30">
+                    </div>
+                </div>
+            </div>
+
+            <div id="canvas-wrapper">
+                <div id="canvas-container">
+                    <canvas id="stage-canvas" width="480" height="360"></canvas>
+                </div>
             </div>
 
             <div class="scratch-bar">
@@ -314,52 +371,30 @@
                 </button>
                 <div class="ml-auto flex items-center">
                     <span class="status-light"></span>
-                    <span id="status-bar" class="text-[12px] tracking-[0.2em] font-bold text-[#00d4ff]">ACTIVE</span>
-                </div>
-            </div>
-
-            <div id="canvas-wrapper">
-                <div id="canvas-container">
-                    <canvas id="stage-canvas" width="480" height="360"></canvas>
-                </div>
-            </div>
-
-            <div class="controls-panel">
-                <input type="file" id="file-input" accept=".sb3" 
-                    class="block w-full text-xs text-blue-200 mb-4 file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-[#00d4ff] file:text-black hover:file:opacity-80 cursor-pointer"/>
-                
-                <div class="border-t border-white/10 pt-3">
-                    <div class="flex items-center gap-6">
-                        <div class="flex items-center gap-3 whitespace-nowrap min-w-[100px]">
-                            <span class="text-[10px] font-bold text-blue-300 uppercase tracking-widest">CLOCK:</span>
-                            <span class="text-xs text-white font-mono"><span id="fps-value">30</span> FPS</span>
-                        </div>
-                        <input type="range" id="fps-slider" min="30" max="120" value="30" class="flex-grow">
-                    </div>
+                    <span id="status-bar" class="text-[10px] tracking-[0.2em] font-bold text-[#00d4ff]">ACTIVE</span>
                 </div>
             </div>
         </section>
 
-        <!-- GUIDE SECTION (横に広く、縦をコンパクトに) -->
+        <!-- GUIDE SECTION -->
         <aside id="guide-section">
             <h2 class="guide-h2">
                 <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
                 USER GUIDE
             </h2>
 
-            <!-- ガイド項目をグリッド化して高さを抑える -->
             <div class="guide-grid">
                 <div class="guide-item">
                     <h3>01. LOAD</h3>
-                    <p>「Choose File」から .sb3 を選択。エンジンが解析を開始します。</p>
+                    <p>右上の「Choose Project」から .sb3 を選択。即座にエンジンが解析を開始します。</p>
                 </div>
                 <div class="guide-item">
                     <h3>02. CONTROL</h3>
-                    <p>旗でスタート、赤丸で全停止。標準的な操作感です。</p>
+                    <p>ステージ下の旗でスタート、赤丸で停止。標準的な操作を維持しています。</p>
                 </div>
                 <div class="guide-item">
                     <h3>03. CLOCK</h3>
-                    <p>スライダーで最大120FPSまで。ハイスピードな体験を。</p>
+                    <p>右上のスライダーで最大120FPSまで。高クロックでの実行が可能です。</p>
                 </div>
             </div>
 
@@ -371,24 +406,24 @@
             <div class="trouble-grid">
                 <div class="trouble-item">
                     <h4>読込未完了</h4>
-                    <p>再読み込みを。大容量ファイルは時間がかかります。</p>
+                    <p>再読み込みを。大容量ファイルは読み込みに時間がかかります。</p>
                 </div>
                 <div class="trouble-item">
                     <h4>低パフォーマンス</h4>
-                    <p>ハードウェアアクセラレーションを有効化してください。</p>
+                    <p>120FPSは高負荷です。動作が不安定な場合は30FPSに戻してください。</p>
                 </div>
                 <div class="trouble-item">
                     <h4>音が出ない</h4>
-                    <p>キャンバス内を一度クリックすると許可されます。</p>
+                    <p>ブラウザの仕様です。ステージを一度クリックして許可してください。</p>
                 </div>
                 <div class="trouble-item">
-                    <h4>変数の非同期</h4>
-                    <p>クラウド変数のリアルタイム共有は非対応です。</p>
+                    <h4>表示崩れ</h4>
+                    <p>ベクター画像の複雑なパスは描画負荷を増大させる場合があります。</p>
                 </div>
             </div>
 
             <div class="mt-8 pt-4 border-t border-white/5 text-[9px] text-gray-500 font-mono flex justify-between">
-                <span>NIGHT-MOD v2.9.5 | BUILD 03.R2</span>
+                <span>NIGHT-MOD v3.0.0 | CORE ARCHITECTURE</span>
                 <span>BY eakonn705 & GEMINI</span>
             </div>
         </aside>
