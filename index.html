@@ -22,7 +22,6 @@
     </script>
 
     <style>
-        /* 1. 高級感のあるフォント(Cinzel Decorative)を追加 */
         @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Orbitron:wght@400;900&family=Rajdhani:wght@300;500;700&display=swap');
 
         html, body {
@@ -70,7 +69,6 @@
             justify-content: center;
         }
 
-        /* 1. タイトルフォントをCinzel Decorativeに変更 */
         .mod-title {
             font-family: 'Cinzel Decorative', serif;
             font-size: 3.5rem;
@@ -248,13 +246,11 @@
             </div>
 
             <div class="controls-panel">
-                <!-- 4. ファイル選択プログラム維持 -->
                 <input type="file" id="file-input" accept=".sb3" 
                     class="block w-full text-xs text-blue-300 mb-4 file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-[#00d4ff] file:text-black hover:file:opacity-80 cursor-pointer"/>
                 
                 <div class="border-t border-white/10 pt-4">
                     <div class="flex items-center gap-4">
-                        <!-- FPSラベルと数値を横並び、スライダーも横並びに配置 -->
                         <div class="flex items-center gap-2 whitespace-nowrap min-w-[80px]">
                             <span class="text-[11px] font-bold text-blue-300 uppercase tracking-widest">FPS:</span>
                             <span class="text-xs text-white font-mono"><span id="fps-value">30</span></span>
@@ -284,7 +280,7 @@
 
             <div class="guide-item">
                 <h3>03. オーバークロック</h3>
-                <p>スライダーを動かすことで、最大120FPSまで実行速度を加速させることができます。通常より高速な動作を楽しめます。</p>
+                <p>スライダーを動かすことで、最大120FPSまで実行速度を加速させることができます。厳密なデルタタイム制御により、正確な倍速処理を行います。</p>
             </div>
 
             <div class="guide-item">
@@ -300,7 +296,6 @@
     </div>
 
     <script>
-        // Keyboard scroll prevention
         window.addEventListener('keydown', (e) => {
             if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code) && e.target === document.body) {
                 e.preventDefault();
@@ -361,26 +356,35 @@
                 vm.attachStorage(storage);
 
                 let targetFPS = 30;
-                let lastStepTime = performance.now();
+                let lastTick = performance.now();
+                let accumulator = 0;
 
-                const customStep = () => {
-                    const now = performance.now();
-                    const interval = 1000 / targetFPS;
-                    const elapsed = now - lastStepTime;
+                // 改良されたゲームループ：デルタタイム方式
+                const gameLoop = (now) => {
+                    const dt = now - lastTick;
+                    lastTick = now;
 
-                    if (elapsed >= interval) {
+                    // 120FPS設定なら 1tick=8.33ms、30FPSなら 1tick=33.33ms
+                    const tickDuration = 1000 / targetFPS;
+                    
+                    // 経過時間を蓄積
+                    accumulator += dt;
+
+                    // 蓄積された時間が1tickを超えている間、ステップを実行
+                    // これにより、30FPS設定時はきっちり33.3msごとに1回、
+                    // ブラウザの描画性能（60FPS）にかかわらず実行される
+                    while (accumulator >= tickDuration) {
                         vm.runtime._step();
-                        lastStepTime = now - (elapsed % interval);
+                        accumulator -= tickDuration;
                     }
-                    requestAnimationFrame(customStep);
+                    
+                    renderer.draw();
+                    requestAnimationFrame(gameLoop);
                 };
 
                 const updateFPS = (fps) => {
                     targetFPS = fps;
                     fpsValueDisplay.textContent = fps;
-                    if (typeof vm.setRuntimeOptions === 'function') {
-                        vm.setRuntimeOptions({ frameRate: fps });
-                    }
                     if (vm.runtime) {
                         vm.runtime.frameLoopTimeout = 1000 / fps;
                     }
@@ -425,10 +429,10 @@
                 if (vm.runtime._steppingInterval) {
                     clearInterval(vm.runtime._steppingInterval);
                 }
-                requestAnimationFrame(customStep);
+                
+                requestAnimationFrame(gameLoop);
                 updateFPS(30);
 
-                // 4. ファイル読込ロジック維持
                 fileInput.addEventListener('change', async (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
@@ -450,12 +454,6 @@
 
                 greenFlagBtn.addEventListener('click', () => vm.greenFlag());
                 stopBtn.addEventListener('click', () => vm.stopAll());
-
-                const draw = () => {
-                    renderer.draw();
-                    requestAnimationFrame(draw);
-                };
-                draw();
 
             } catch (initErr) {
                 statusBar.textContent = "INIT ERROR";
