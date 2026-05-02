@@ -69,6 +69,23 @@
             justify-content: center;
         }
 
+        .title-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .scratch-logo {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.2rem;
+            color: #ffab19; /* Scratch Orange */
+            letter-spacing: 0.2em;
+            font-weight: 900;
+            text-shadow: 0 0 10px rgba(255, 171, 25, 0.5);
+            margin-bottom: -10px;
+        }
+
         .mod-title {
             font-family: 'Cinzel Decorative', serif;
             font-size: 3.5rem;
@@ -76,7 +93,6 @@
             color: #fff;
             letter-spacing: 0.1em;
             text-shadow: 0 0 10px rgba(0, 212, 255, 0.8), 0 0 30px rgba(0, 212, 255, 0.4);
-            margin-bottom: 20px;
         }
 
         #canvas-container {
@@ -222,7 +238,10 @@
     <div id="main-layout">
         <!-- PLAYER -->
         <section id="player-section">
-            <h1 class="mod-title">Night-Mod</h1>
+            <div class="title-container">
+                <div class="scratch-logo">SCRATCH</div>
+                <h1 class="mod-title">Night-Mod</h1>
+            </div>
 
             <div class="scratch-bar">
                 <button id="green-flag" class="icon-btn" title="Start">
@@ -289,7 +308,7 @@
             </div>
 
             <div class="mt-8 pt-6 border-t border-white/10 text-[10px] text-gray-400">
-                <p>System Version: Gemini 3.1</p>
+                <p>Produced by eakonn705 & Gemini</p>
                 <p>Environment: Production</p>
             </div>
         </aside>
@@ -359,20 +378,13 @@
                 let lastTick = performance.now();
                 let accumulator = 0;
 
-                // 改良されたゲームループ：デルタタイム方式
                 const gameLoop = (now) => {
                     const dt = now - lastTick;
                     lastTick = now;
 
-                    // 120FPS設定なら 1tick=8.33ms、30FPSなら 1tick=33.33ms
                     const tickDuration = 1000 / targetFPS;
-                    
-                    // 経過時間を蓄積
                     accumulator += dt;
 
-                    // 蓄積された時間が1tickを超えている間、ステップを実行
-                    // これにより、30FPS設定時はきっちり33.3msごとに1回、
-                    // ブラウザの描画性能（60FPS）にかかわらず実行される
                     while (accumulator >= tickDuration) {
                         vm.runtime._step();
                         accumulator -= tickDuration;
