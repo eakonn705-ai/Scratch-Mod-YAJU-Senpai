@@ -78,9 +78,9 @@
         .header-controls {
             display: flex;
             align-items: flex-end;
-            gap: 20px;
+            gap: 24px;
             width: 576px;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
             padding-bottom: 15px;
             border-bottom: 1px solid rgba(0, 212, 255, 0.2);
         }
@@ -93,7 +93,7 @@
 
         .scratch-logo {
             font-family: 'Orbitron', sans-serif;
-            font-size: 0.9rem;
+            font-size: 1rem;
             color: #ffab19;
             letter-spacing: 0.3em;
             font-weight: 900;
@@ -103,37 +103,50 @@
 
         .mod-title {
             font-family: 'Cinzel Decorative', serif;
-            font-size: 2.8rem;
+            font-size: 3.8rem; /* 大きく調整 */
             font-weight: 900;
             color: #fff;
             letter-spacing: 0.1em;
-            text-shadow: 0 0 20px rgba(0, 212, 255, 0.8);
+            text-shadow: 0 0 25px rgba(0, 212, 255, 0.9);
             line-height: 1;
         }
 
         .top-tools {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 10px;
             flex-grow: 1;
         }
 
         .fps-display-top {
             font-family: 'Orbitron', sans-serif;
-            font-size: 0.75rem;
+            font-size: 0.8rem;
             color: #00d4ff;
             font-weight: bold;
             letter-spacing: 0.1em;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
+        }
+
+        /* ステージ真上の操作バー */
+        .scratch-bar {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: rgba(10, 10, 35, 0.95);
+            padding: 10px 18px;
+            border: 2px solid #00d4ff;
+            border-bottom: none; /* 下のキャンバスと繋げる */
+            width: 576px;
+            box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.4);
         }
 
         #canvas-wrapper {
             width: 576px;
             height: 432px;
             position: relative;
-            margin-bottom: 10px;
+            margin-bottom: 20px;
         }
 
         #canvas-container {
@@ -146,7 +159,7 @@
             left: 0;
             transform: scale(1.2);
             transform-origin: top left;
-            box-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
             overflow: hidden;
         }
 
@@ -156,18 +169,7 @@
             display: block;
         }
 
-        .scratch-bar {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            background: rgba(10, 10, 35, 0.95);
-            padding: 10px 18px;
-            border: 2px solid #00d4ff;
-            width: 576px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
-        }
-
-        /* 右側のガイドセクション（横長・縦短） */
+        /* 右側のガイドセクション */
         #guide-section {
             flex: 1;
             max-width: 900px;
@@ -289,15 +291,15 @@
             box-shadow: 0 0 8px #00d4ff;
         }
 
-        /* カスタムファイル入力ボタン */
+        /* 日本語化したカスタムファイル入力ボタン */
         .custom-file-upload {
             display: inline-block;
-            padding: 4px 12px;
+            padding: 6px 16px;
             cursor: pointer;
             background: #00d4ff;
             color: #000;
             border-radius: 20px;
-            font-size: 10px;
+            font-size: 11px;
             font-weight: 900;
             text-transform: uppercase;
             transition: all 0.2s;
@@ -343,7 +345,7 @@
                 <div class="top-tools">
                     <label class="custom-file-upload">
                         <input type="file" id="file-input" accept=".sb3" class="hidden"/>
-                        Choose Project
+                        sb3ファイルを読み込む
                     </label>
                     <div class="fps-display-top">
                         <span>CLOCK: <span id="fps-value" class="text-white">30</span> FPS</span>
@@ -352,12 +354,7 @@
                 </div>
             </div>
 
-            <div id="canvas-wrapper">
-                <div id="canvas-container">
-                    <canvas id="stage-canvas" width="480" height="360"></canvas>
-                </div>
-            </div>
-
+            <!-- 操作バーをステージの真上に配置 -->
             <div class="scratch-bar">
                 <button id="green-flag" class="icon-btn" title="Start">
                     <svg width="28" height="28" viewBox="0 0 32 32">
@@ -374,6 +371,12 @@
                     <span id="status-bar" class="text-[10px] tracking-[0.2em] font-bold text-[#00d4ff]">ACTIVE</span>
                 </div>
             </div>
+
+            <div id="canvas-wrapper">
+                <div id="canvas-container">
+                    <canvas id="stage-canvas" width="480" height="360"></canvas>
+                </div>
+            </div>
         </section>
 
         <!-- GUIDE SECTION -->
@@ -385,16 +388,16 @@
 
             <div class="guide-grid">
                 <div class="guide-item">
-                    <h3>01. LOAD</h3>
-                    <p>右上の「Choose Project」から .sb3 を選択。即座にエンジンが解析を開始します。</p>
+                    <h3>01. ロード</h3>
+                    <p>右上の「sb3ファイルを読み込む」ボタンからファイルを選択してください。エンジンが即座に起動します。</p>
                 </div>
                 <div class="guide-item">
-                    <h3>02. CONTROL</h3>
-                    <p>ステージ下の旗でスタート、赤丸で停止。標準的な操作を維持しています。</p>
+                    <h3>02. 操作</h3>
+                    <p>ステージ上部の緑の旗で開始、赤いボタンで全スクリプトを停止します。</p>
                 </div>
                 <div class="guide-item">
-                    <h3>03. CLOCK</h3>
-                    <p>右上のスライダーで最大120FPSまで。高クロックでの実行が可能です。</p>
+                    <h3>03. 高クロック</h3>
+                    <p>右上のスライダーで最大120FPSまでオーバークロックが可能です。</p>
                 </div>
             </div>
 
@@ -406,24 +409,24 @@
             <div class="trouble-grid">
                 <div class="trouble-item">
                     <h4>読込未完了</h4>
-                    <p>再読み込みを。大容量ファイルは読み込みに時間がかかります。</p>
+                    <p>ページを更新してください。大容量ファイルは処理に数秒かかる場合があります。</p>
                 </div>
                 <div class="trouble-item">
                     <h4>低パフォーマンス</h4>
-                    <p>120FPSは高負荷です。動作が不安定な場合は30FPSに戻してください。</p>
+                    <p>120FPSは負荷が高いため、動作が重い場合は30FPSに戻して試してください。</p>
                 </div>
                 <div class="trouble-item">
                     <h4>音が出ない</h4>
-                    <p>ブラウザの仕様です。ステージを一度クリックして許可してください。</p>
+                    <p>ブラウザの制限です。キャンバスを一度クリックすると音が有効になります。</p>
                 </div>
                 <div class="trouble-item">
-                    <h4>表示崩れ</h4>
-                    <p>ベクター画像の複雑なパスは描画負荷を増大させる場合があります。</p>
+                    <h4>表示の不具合</h4>
+                    <p>複雑なベクター描画はレンダラーに負荷をかける可能性があります。</p>
                 </div>
             </div>
 
             <div class="mt-8 pt-4 border-t border-white/5 text-[9px] text-gray-500 font-mono flex justify-between">
-                <span>NIGHT-MOD v3.0.0 | CORE ARCHITECTURE</span>
+                <span>NIGHT-MOD v3.2.0 | HEADER INTEGRATION</span>
                 <span>BY eakonn705 & GEMINI</span>
             </div>
         </aside>
