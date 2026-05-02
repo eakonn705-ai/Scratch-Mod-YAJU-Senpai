@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scratch Mod Player</title>
+    <script src="https://cdn.jsdelivr.net/npm/scratch-vm/dist/web/scratch-vm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/scratch-render/dist/web/scratch-render.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/scratch-storage/dist/web/scratch-storage.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/scratch-svg-renderer/dist/web/scratch-svg-renderer.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script>
+        window.global = window;
+        window.process = { env: { NODE_ENV: 'production' } };
+        window.Buffer = window.Buffer || { isBuffer: () => false };
+    </script>
+
+    <style>
+        body {
+            background-color: #f0f4f8;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+        #canvas-container {
+            width: 480px;
+            height: 360px;
+            background-color: white;
+            border: 4px solid #4d97ff;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .controls-panel {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="max-w-2xl w-full space-y-6">
+        <header class="text-center">
+            <h1 class="text-3xl font-bold text-gray-800">Scratch Mod Player</h1>
+            <p class="text-gray-600 mt-2">.sb3ファイルをアップロードして実行速度をカスタマイズ</p>
+        </header>
+
+        <main class="flex flex-col items-center space-y-6">
+            <div id="canvas-container">
+                <canvas id="stage-canvas"></canvas>
+            </div>
+
+            <div class="controls-panel w-full space-y-4">
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div class="flex gap-2">
+                        <button id="green-flag" title="実行" class="bg-green-500 hover:bg-green-600 text-white p-3 rounded-full transition shadow-lg active:scale-95">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg>
+                        </button>
+                        <button id="stop-all" title="停止" class="bg-red-500 hover:bg-red-600 text-white p-3 rounded-full transition shadow-lg active:scale-95">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
+                        </button>
+                    </div>
+
+                    <div class="flex-1 w-full sm:w-auto">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">SB3ファイルを読み込む</label>
+                        <input type="file" id="file-input" accept=".sb3" 
+                            class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition cursor-pointer"/>
+                    </div>
+                </div>
+
+                <div class="border-t pt-4">
+                    <div class="flex items-center justify-between mb-1">
+                        <label for="fps-slider" class="text-sm font-semibold text-gray-700">実行速度 (FPS): <span id="fps-value" class="text-blue-600">30</span></label>
+                        <span class="text-xs text-gray-400">30 (標準) 〜 120 (高速)</span>
+                    </div>
+                    <input type="range" id="fps-slider" min="30" max="120" value="30" step="1" 
+                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+                </div>
+            </div>
+
+            <div id="status-bar" class="w-full text-center text-sm text-gray-500 italic">
+                初期化中...
+            </div>
+        </main>
+
+        <footer class="text-center text-xs text-gray-400 mt-8">
+            Built with Scratch VM & Render Components
+        </footer>
+    </div>
+
+    <script>
+        let retryCount = 0;
+        const maxRetries = 30;
+
+        const getConstructor = (lib) => {
+            if (typeof lib === 'function') return lib;
+            if (lib && typeof lib.default === 'function') return lib.default;
+            if (lib && typeof lib === 'object') {
+                for (const key in lib) {
+                    if (typeof lib[key] === 'function' && key.toLowerCase().includes('storage')) {
+                        return lib[key];
+                    }
+                }
+            }
+            return null;
+        };
+
+        const initScratchPlayer = () => {
+            const canvas = document.getElementById('stage-canvas');
+            const fileInput = document.getElementById('file-input');
+            const greenFlagBtn = document.getElementById('green-flag');
+            const stopBtn = document.getElementById('stop-all');
+            const statusBar = document.getElementById('status-bar');
+            const fpsSlider = document.getElementById('fps-slider');
+            const fpsValueDisplay = document.getElementById('fps-value');
+
+            const rawVM = window.VirtualMachine;
+            const rawRenderer = window.ScratchRender;
+            const rawStorage = window.ScratchStorage;
+
+            const ActualVM = getConstructor(rawVM);
+            const ActualRenderer = getConstructor(rawRenderer);
+            const ActualStorage = getConstructor(rawStorage);
+
+            if (typeof ActualVM !== 'function' || typeof ActualRenderer !== 'function' || typeof ActualStorage !== 'function') {
+                if (retryCount < maxRetries) {
+                    retryCount++;
+                    statusBar.textContent = `ライブラリをロード中... (${retryCount}/${maxRetries})`;
+                    setTimeout(initScratchPlayer, 300);
+                    return;
+                }
+                statusBar.textContent = "Error: ライブラリの取得に失敗しました。";
+                return;
+            }
+
+            statusBar.textContent = "準備完了。ファイルを読み込んでください。";
+
+            try {
+                const vm = new ActualVM();
+                const renderer = new ActualRenderer(canvas);
+                const storage = new ActualStorage();
+
+                vm.attachRenderer(renderer);
+                vm.attachStorage(storage);
+
+                // FPS制御用の変数
+                let targetFPS = 30;
+                let lastStepTime = performance.now();
+
+                // Scratch VMの標準的なループを停止させ、独自のループで制御する
+                // vm.start() は内部でタイマーを開始するが、それを強制的に上書き・制御する
+                const customStep = () => {
+                    const now = performance.now();
+                    const interval = 1000 / targetFPS;
+                    const elapsed = now - lastStepTime;
+
+                    if (elapsed >= interval) {
+                        // VMの計算ステップを1回実行
+                        vm.runtime._step();
+                        lastStepTime = now - (elapsed % interval);
+                    }
+                    requestAnimationFrame(customStep);
+                };
+
+                const updateFPS = (fps) => {
+                    targetFPS = fps;
+                    fpsValueDisplay.textContent = fps;
+                    
+                    // VMにオプションを伝える（互換性のため）
+                    if (typeof vm.setRuntimeOptions === 'function') {
+                        vm.setRuntimeOptions({ frameRate: fps });
+                    }
+                };
+
+                fpsSlider.addEventListener('input', (e) => {
+                    updateFPS(parseInt(e.target.value));
+                });
+
+                // Input setup
+                const getMousePos = (e) => {
+                    const rect = canvas.getBoundingClientRect();
+                    return {
+                        x: (e.clientX - rect.left) / rect.width * 480 - 240,
+                        y: 180 - (e.clientY - rect.top) / rect.height * 360
+                    };
+                };
+
+                canvas.addEventListener('mousemove', (e) => {
+                    const pos = getMousePos(e);
+                    vm.postIOData('mouse', { x: pos.x, y: pos.y, isDown: undefined });
+                });
+
+                canvas.addEventListener('mousedown', (e) => {
+                    const pos = getMousePos(e);
+                    vm.postIOData('mouse', { x: pos.x, y: pos.y, isDown: true });
+                });
+
+                window.addEventListener('mouseup', () => {
+                    vm.postIOData('mouse', { isDown: false });
+                });
+
+                window.addEventListener('keydown', (e) => {
+                    vm.postIOData('keyboard', { key: e.key, isDown: true });
+                });
+
+                window.addEventListener('keyup', (e) => {
+                    vm.postIOData('keyboard', { key: e.key, isDown: false });
+                });
+
+                // VMの初期化
+                vm.start();
+                // 標準のタイマーを止めて独自ループに切り替える
+                if (vm.runtime._steppingInterval) {
+                    clearInterval(vm.runtime._steppingInterval);
+                }
+                requestAnimationFrame(customStep);
+                
+                updateFPS(30);
+
+                fileInput.addEventListener('change', async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    statusBar.textContent = "プロジェクトをロード中...";
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                        try {
+                            await vm.loadProject(event.target.result);
+                            statusBar.textContent = `実行中: ${file.name}`;
+                            vm.greenFlag();
+                        } catch (err) {
+                            statusBar.textContent = "Error: 読み込み失敗。";
+                            console.error(err);
+                        }
+                    };
+                    reader.readAsArrayBuffer(file);
+                });
+
+                greenFlagBtn.addEventListener('click', () => vm.greenFlag());
+                stopBtn.addEventListener('click', () => vm.stopAll());
+
+                // 描画ループ（これは描画性能のみ）
+                const draw = () => {
+                    renderer.draw();
+                    requestAnimationFrame(draw);
+                };
+                draw();
+                
+            } catch (initErr) {
+                statusBar.textContent = "初期化エラーが発生しました。";
+                console.error(initErr);
+            }
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initScratchPlayer);
+        } else {
+            initScratchPlayer();
+        }
+    </script>
+</body>
+</html>
