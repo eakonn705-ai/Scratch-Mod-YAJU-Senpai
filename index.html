@@ -79,7 +79,6 @@
             letter-spacing: 0.1em;
             text-shadow: 0 0 10px rgba(0, 212, 255, 0.8), 0 0 30px rgba(0, 212, 255, 0.4);
             margin-bottom: 20px;
-            /* transform: skew(-10deg); 高級感を出すため斜体解除 */
         }
 
         #canvas-container {
@@ -254,12 +253,14 @@
                     class="block w-full text-xs text-blue-300 mb-4 file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-[#00d4ff] file:text-black hover:file:opacity-80 cursor-pointer"/>
                 
                 <div class="border-t border-white/10 pt-4">
-                    <div class="flex justify-between items-center mb-2">
-                        <!-- 2. 表示をFPSに変更 -->
-                        <span class="text-[11px] font-bold text-blue-300 uppercase tracking-widest">FPS</span>
-                        <span class="text-xs text-white font-mono"><span id="fps-value">30</span> FPS</span>
+                    <div class="flex items-center gap-4">
+                        <!-- FPSラベルと数値を横並び、スライダーも横並びに配置 -->
+                        <div class="flex items-center gap-2 whitespace-nowrap min-w-[80px]">
+                            <span class="text-[11px] font-bold text-blue-300 uppercase tracking-widest">FPS:</span>
+                            <span class="text-xs text-white font-mono"><span id="fps-value">30</span></span>
+                        </div>
+                        <input type="range" id="fps-slider" min="30" max="120" value="30" class="flex-grow">
                     </div>
-                    <input type="range" id="fps-slider" min="30" max="120" value="30" class="w-full">
                 </div>
             </div>
         </section>
@@ -292,7 +293,6 @@
             </div>
 
             <div class="mt-8 pt-6 border-t border-white/10 text-[10px] text-gray-400">
-                <!-- 3. バージョン表示をGemini 3.1に変更 -->
                 <p>System Version: Gemini 3.1</p>
                 <p>Environment: Production</p>
             </div>
