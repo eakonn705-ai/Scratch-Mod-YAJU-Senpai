@@ -29,14 +29,14 @@
             padding: 0;
             width: 100%;
             min-height: 100vh;
-            overflow-y: auto; /* スクロールを解禁 */
+            overflow-y: auto;
             font-family: 'Rajdhani', sans-serif;
             background-color: #050510;
             background-image: url('night-mod.png.jpg');
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
-            background-attachment: fixed; /* 背景を固定してスクロールをスムーズに */
+            background-attachment: fixed;
             color: #fff;
         }
 
@@ -51,17 +51,16 @@
             z-index: -1;
         }
 
-        /* 横並びを維持するためのコンテナ */
         #main-layout {
             display: flex;
             flex-direction: row;
             justify-content: center;
             align-items: flex-start;
-            gap: 60px;
+            gap: 40px;
             width: 100%;
-            max-width: 1400px;
+            max-width: 1600px; 
             margin: 0 auto;
-            padding: 60px 40px;
+            padding: 40px 20px;
             box-sizing: border-box;
             z-index: 1;
         }
@@ -71,44 +70,43 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            flex: 0 0 576px; /* ステージ幅に合わせる */
-            position: sticky; /* プレイヤーを画面上部に固定（スクロール中も見やすく） */
-            top: 40px;
+            flex: 0 0 576px;
+            position: sticky;
+            top: 20px;
         }
 
         .title-container {
             display: flex;
             flex-direction: column;
             align-items: center;
-            margin-bottom: 40px;
+            margin-bottom: 25px;
         }
 
         .scratch-logo {
             font-family: 'Orbitron', sans-serif;
-            font-size: 1.8rem;
+            font-size: 1.1rem; /* 小さく調整 */
             color: #ffab19;
-            letter-spacing: 0.5em;
+            letter-spacing: 0.4em;
             font-weight: 900;
-            text-shadow: 0 0 20px rgba(255, 171, 25, 0.8);
-            margin-bottom: -15px;
+            text-shadow: 0 0 10px rgba(255, 171, 25, 0.6);
+            margin-bottom: -8px;
         }
 
         .mod-title {
             font-family: 'Cinzel Decorative', serif;
-            font-size: 5.5rem;
+            font-size: 3.5rem; /* さらに小さく、目立ちすぎないように */
             font-weight: 900;
             color: #fff;
-            letter-spacing: 0.25em;
-            text-shadow: 0 0 30px rgba(0, 212, 255, 1), 0 0 60px rgba(0, 212, 255, 0.6);
+            letter-spacing: 0.15em;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.8);
             line-height: 1;
         }
 
-        /* ステージ拡大設定 */
         #canvas-wrapper {
             width: 576px;
             height: 432px;
             position: relative;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
 
         #canvas-container {
@@ -121,7 +119,7 @@
             left: 0;
             transform: scale(1.2);
             transform-origin: top left;
-            box-shadow: 0 0 40px rgba(0, 212, 255, 0.4);
+            box-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
             overflow: hidden;
         }
 
@@ -136,7 +134,7 @@
             align-items: center;
             gap: 15px;
             background: rgba(10, 10, 35, 0.95);
-            padding: 12px 20px;
+            padding: 8px 18px;
             border: 2px solid #00d4ff;
             border-bottom: none;
             width: 576px;
@@ -144,92 +142,105 @@
 
         .controls-panel {
             background: rgba(10, 10, 35, 0.95);
-            padding: 20px;
+            padding: 15px;
             width: 576px;
             border: 2px solid #00d4ff;
             border-top: none;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
         }
 
-        /* 右側のガイドセクション（縦長） */
+        /* 右側のガイドセクション（横長・縦短） */
         #guide-section {
             flex: 1;
-            max-width: 450px;
-            background: rgba(5, 15, 40, 0.85);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(0, 212, 255, 0.4);
-            border-left: 8px solid #00d4ff;
-            padding: 40px;
+            max-width: 900px; /* 横に長く広げる */
+            background: rgba(5, 15, 45, 0.85);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-left: 6px solid #00d4ff;
+            padding: 25px 35px; /* 上下パディングを減らして縦を短く */
             border-radius: 4px;
-            box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
         }
 
         .guide-h2 {
             font-family: 'Orbitron', sans-serif;
-            font-size: 1.6rem;
+            font-size: 1.2rem; /* 少しコンパクトに */
             color: #00d4ff;
-            border-bottom: 2px solid rgba(0, 212, 255, 0.6);
-            margin-bottom: 25px;
-            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(0, 212, 255, 0.4);
+            margin-bottom: 15px;
+            padding-bottom: 8px;
             display: flex;
             align-items: center;
-            gap: 15px;
-            letter-spacing: 0.15em;
+            gap: 12px;
+            letter-spacing: 0.1em;
+        }
+
+        /* ガイド項目を横並びっぽく配置するためのグリッド（縦短化のため） */
+        .guide-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
         }
 
         .guide-item {
-            margin-bottom: 30px;
+            margin-bottom: 0;
         }
 
         .guide-item h3 {
             font-weight: bold;
             color: #fff;
-            font-size: 1.2rem;
-            margin-bottom: 8px;
+            font-size: 1rem;
+            margin-bottom: 4px;
             text-transform: uppercase;
             border-left: 3px solid #ffab19;
             padding-left: 10px;
         }
 
         .guide-item p {
-            font-size: 1rem;
+            font-size: 0.85rem;
             color: #cddcf0;
-            line-height: 1.7;
+            line-height: 1.5;
+        }
+
+        .trouble-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr; 
+            gap: 12px;
         }
 
         .trouble-item {
-            background: rgba(255, 51, 102, 0.12);
-            border-left: 4px solid #ff3366;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 4px;
+            background: rgba(255, 51, 102, 0.08);
+            border-left: 3px solid #ff3366;
+            padding: 12px 15px;
+            border-radius: 3px;
         }
 
         .trouble-item h4 {
             color: #ff3366;
-            font-size: 1.1rem;
+            font-size: 0.9rem;
             font-weight: bold;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
         }
 
         .trouble-item p {
-            font-size: 0.9rem;
-            color: #fefefe;
-            line-height: 1.6;
+            font-size: 0.8rem;
+            color: #e0e0e0;
+            line-height: 1.4;
         }
 
         .status-light {
-            width: 12px;
-            height: 12px;
+            width: 10px;
+            height: 10px;
             border-radius: 50%;
             background: #00ff88;
-            box-shadow: 0 0 15px #00ff88;
+            box-shadow: 0 0 10px #00ff88;
             display: inline-block;
-            margin-right: 12px;
+            margin-right: 10px;
         }
 
         .icon-btn {
-            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transition: all 0.2s ease;
             background: transparent;
             border: none;
             cursor: pointer;
@@ -240,44 +251,42 @@
         }
 
         .icon-btn:hover {
-            transform: scale(1.3) rotate(5deg);
-            filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.5));
+            transform: scale(1.15);
         }
 
         input[type="range"] {
             -webkit-appearance: none;
-            background: #0a0a20;
-            height: 10px;
-            border-radius: 5px;
+            background: #08081a;
+            height: 6px;
+            border-radius: 3px;
             cursor: pointer;
-            border: 1px solid rgba(0, 212, 255, 0.3);
         }
 
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
-            width: 22px;
-            height: 22px;
+            width: 18px;
+            height: 18px;
             background: #00d4ff;
             border-radius: 50%;
-            box-shadow: 0 0 15px #00d4ff;
-            cursor: pointer;
+            box-shadow: 0 0 10px #00d4ff;
         }
 
-        @media (max-width: 1200px) {
+        @media (max-width: 1300px) {
             #main-layout {
                 flex-direction: column;
                 align-items: center;
-                padding: 40px 20px;
             }
             #player-section {
                 position: relative;
                 top: 0;
-                margin-bottom: 60px;
+                margin-bottom: 40px;
                 flex: none;
             }
             #guide-section {
                 max-width: 576px;
-                width: 100%;
+            }
+            .trouble-grid {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -285,7 +294,7 @@
 <body>
 
     <div id="main-layout">
-        <!-- PLAYER SECTION (左列 - 固定表示) -->
+        <!-- PLAYER SECTION -->
         <section id="player-section">
             <div class="title-container">
                 <div class="scratch-logo">SCRATCH</div>
@@ -294,18 +303,18 @@
 
             <div class="scratch-bar">
                 <button id="green-flag" class="icon-btn" title="Start">
-                    <svg width="34" height="34" viewBox="0 0 32 32">
+                    <svg width="28" height="28" viewBox="0 0 32 32">
                         <path fill="#00ff88" d="M6 4v24l20-12L6 4z"/>
                     </svg>
                 </button>
                 <button id="stop-all" class="icon-btn" title="Stop">
-                    <svg width="34" height="34" viewBox="0 0 32 32">
+                    <svg width="28" height="28" viewBox="0 0 32 32">
                         <path fill="#ff3366" d="M10 4h12l6 6v12l-6 6H10l-6-6V10l6-6z"/>
                     </svg>
                 </button>
                 <div class="ml-auto flex items-center">
                     <span class="status-light"></span>
-                    <span id="status-bar" class="text-[14px] tracking-[0.3em] font-bold text-[#00d4ff]">CORE ACTIVE</span>
+                    <span id="status-bar" class="text-[12px] tracking-[0.2em] font-bold text-[#00d4ff]">ACTIVE</span>
                 </div>
             </div>
 
@@ -317,13 +326,13 @@
 
             <div class="controls-panel">
                 <input type="file" id="file-input" accept=".sb3" 
-                    class="block w-full text-sm text-blue-300 mb-6 file:mr-4 file:py-2 file:px-6 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-[#00d4ff] file:text-black hover:file:opacity-80 cursor-pointer"/>
+                    class="block w-full text-xs text-blue-200 mb-4 file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-[#00d4ff] file:text-black hover:file:opacity-80 cursor-pointer"/>
                 
-                <div class="border-t border-white/10 pt-5">
+                <div class="border-t border-white/10 pt-3">
                     <div class="flex items-center gap-6">
-                        <div class="flex items-center gap-3 whitespace-nowrap min-w-[120px]">
-                            <span class="text-xs font-bold text-blue-300 uppercase tracking-widest">CLOCK SPEED:</span>
-                            <span class="text-sm text-white font-mono"><span id="fps-value">30</span> FPS</span>
+                        <div class="flex items-center gap-3 whitespace-nowrap min-w-[100px]">
+                            <span class="text-[10px] font-bold text-blue-300 uppercase tracking-widest">CLOCK:</span>
+                            <span class="text-xs text-white font-mono"><span id="fps-value">30</span> FPS</span>
                         </div>
                         <input type="range" id="fps-slider" min="30" max="120" value="30" class="flex-grow">
                     </div>
@@ -331,68 +340,56 @@
             </div>
         </section>
 
-        <!-- GUIDE SECTION (右列 - 縦長) -->
+        <!-- GUIDE SECTION (横に広く、縦をコンパクトに) -->
         <aside id="guide-section">
             <h2 class="guide-h2">
-                <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
                 USER GUIDE
             </h2>
 
-            <div class="guide-item">
-                <h3>01. プロジェクトのロード</h3>
-                <p>左下の「Choose File」から .sb3 ファイルをアップロードしてください。アップロードが完了すると、即座にメインエンジンが実行準備に入ります。</p>
+            <!-- ガイド項目をグリッド化して高さを抑える -->
+            <div class="guide-grid">
+                <div class="guide-item">
+                    <h3>01. LOAD</h3>
+                    <p>「Choose File」から .sb3 を選択。エンジンが解析を開始します。</p>
+                </div>
+                <div class="guide-item">
+                    <h3>02. CONTROL</h3>
+                    <p>旗でスタート、赤丸で全停止。標準的な操作感です。</p>
+                </div>
+                <div class="guide-item">
+                    <h3>03. CLOCK</h3>
+                    <p>スライダーで最大120FPSまで。ハイスピードな体験を。</p>
+                </div>
             </div>
 
-            <div class="guide-item">
-                <h3>02. 実行のコントロール</h3>
-                <p>緑の旗でコードの実行を開始、停止ボタンで全てのバックグラウンドプロセスを強制終了します。プロジェクトの再起動には旗を再度クリックしてください。</p>
-            </div>
-
-            <div class="guide-item">
-                <h3>03. クロック速度（FPS）</h3>
-                <p>スライダーを動かすことで、実行速度をリアルタイムで変更できます。30FPSが標準ですが、最大120FPSまでオーバークロックすることで、驚異的な滑らかさを実現します。</p>
-            </div>
-
-            <div class="guide-item">
-                <h3>04. インタラクション</h3>
-                <p>キーボード入力、マウス操作、クリック判定に対応。Night-Modは標準のScratch VMよりも高い応答性を確保しています。</p>
-            </div>
-
-            <h2 class="guide-h2 mt-12">
-                <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+            <h2 class="guide-h2">
+                <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
                 TROUBLESHOOTING
             </h2>
 
-            <div class="trouble-item">
-                <h4>プロジェクトが読み込まれない</h4>
-                <p>ファイルが .sb3 形式であることを確認してください。ブラウザのキャッシュにより読み込みが妨げられる場合、ページを再読み込みしてください。</p>
+            <div class="trouble-grid">
+                <div class="trouble-item">
+                    <h4>読込未完了</h4>
+                    <p>再読み込みを。大容量ファイルは時間がかかります。</p>
+                </div>
+                <div class="trouble-item">
+                    <h4>低パフォーマンス</h4>
+                    <p>ハードウェアアクセラレーションを有効化してください。</p>
+                </div>
+                <div class="trouble-item">
+                    <h4>音が出ない</h4>
+                    <p>キャンバス内を一度クリックすると許可されます。</p>
+                </div>
+                <div class="trouble-item">
+                    <h4>変数の非同期</h4>
+                    <p>クラウド変数のリアルタイム共有は非対応です。</p>
+                </div>
             </div>
 
-            <div class="trouble-item">
-                <h4>パフォーマンスの低下</h4>
-                <p>120FPS設定はPCのCPU/GPUに負荷をかけます。動作が遅い場合は60FPSまたは30FPSに調整してください。また、他のタブを閉じると改善されます。</p>
-            </div>
-
-            <div class="trouble-item">
-                <h4>音が出ない</h4>
-                <p>ブラウザの自動再生ポリシーにより、画面のどこかを一度クリックするまで音声は再生されません。ステージをクリックしてください。</p>
-            </div>
-
-            <div class="trouble-item">
-                <h4>特定のブロックが動かない</h4>
-                <p>外部拡張機能（ビデオ検知など）を必要とするブロックは、現在のビルドでは制限される場合があります。</p>
-            </div>
-
-            <div class="trouble-item">
-                <h4>画面の表示崩れ</h4>
-                <p>ブラウザのズーム設定が100%以外になっていると、ステージが正しく表示されないことがあります。Ctrl+0 でリセットしてください。</p>
-            </div>
-
-            <div class="mt-16 pt-8 border-t border-white/10 text-xs text-gray-500 font-mono">
-                <p>Night-Mod Version 2.8</p>
-                <p>Stable Build: 2024.03.X</p>
-                <p>Architecture: Advanced VM Integration</p>
-                <p class="mt-4">Developed by eakonn705 & Gemini</p>
+            <div class="mt-8 pt-4 border-t border-white/5 text-[9px] text-gray-500 font-mono flex justify-between">
+                <span>NIGHT-MOD v2.9.5 | BUILD 03.R2</span>
+                <span>BY eakonn705 & GEMINI</span>
             </div>
         </aside>
     </div>
@@ -429,15 +426,15 @@
             if (!ActualVM || !ActualRenderer || !ActualStorage) {
                 if (retryCount < maxRetries) {
                     retryCount++;
-                    statusBar.textContent = "INITIALIZING...";
+                    statusBar.textContent = "SYNCING...";
                     setTimeout(initScratchPlayer, 300);
                     return;
                 }
-                statusBar.textContent = "CORE FAILED";
+                statusBar.textContent = "CORE ERROR";
                 return;
             }
 
-            statusBar.textContent = "CORE ACTIVE";
+            statusBar.textContent = "ACTIVE";
 
             try {
                 const vm = new ActualVM();
@@ -454,15 +451,12 @@
                 const gameLoop = (now) => {
                     const dt = now - lastTick;
                     lastTick = now;
-
                     const tickDuration = 1000 / targetFPS;
                     accumulator += dt;
-
                     while (accumulator >= tickDuration) {
                         vm.runtime._step();
                         accumulator -= tickDuration;
                     }
-                    
                     renderer.draw();
                     requestAnimationFrame(gameLoop);
                 };
@@ -510,24 +504,21 @@
                 });
 
                 vm.start();
-                
                 if (vm.runtime._steppingInterval) {
                     clearInterval(vm.runtime._steppingInterval);
                 }
-                
                 requestAnimationFrame(gameLoop);
                 updateFPS(30);
 
                 fileInput.addEventListener('change', async (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
-
-                    statusBar.textContent = "UPLOADING...";
+                    statusBar.textContent = "LOADING...";
                     const reader = new FileReader();
                     reader.onload = async (event) => {
                         try {
                             await vm.loadProject(event.target.result);
-                            statusBar.textContent = "CORE ACTIVE";
+                            statusBar.textContent = "ACTIVE";
                             vm.greenFlag();
                         } catch (err) {
                             statusBar.textContent = "ERROR";
