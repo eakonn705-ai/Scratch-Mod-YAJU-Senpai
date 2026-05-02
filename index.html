@@ -4,12 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Night-Mod Interface</title>
+    
+    <!-- Scratch Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/scratch-vm/dist/web/scratch-vm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/scratch-render/dist/web/scratch-render.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/scratch-storage/dist/web/scratch-storage.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/scratch-svg-renderer/dist/web/scratch-svg-renderer.js"></script>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
+    <!-- Polyfills & Environment Setup -->
     <script>
         window.global = window;
         window.process = { env: { NODE_ENV: 'production' } };
@@ -26,6 +31,7 @@
             height: 100%;
             overflow: hidden;
             font-family: 'Rajdhani', sans-serif;
+            background-color: #050510; /* フォールバック背景色 */
             background-image: url('night-mod.png.jpg');
             background-size: cover;
             background-position: center;
@@ -56,7 +62,7 @@
             z-index: 1;
         }
 
-        /* 左側：プレイヤーセクション */
+        /* Player Section */
         #player-section {
             display: flex;
             flex-direction: column;
@@ -84,6 +90,12 @@
             box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
         }
 
+        #stage-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
         .scratch-bar {
             display: flex;
             align-items: center;
@@ -105,7 +117,7 @@
             box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
         }
 
-        /* 右側：ガイドセクション */
+        /* Guide Section */
         #guide-section {
             background: rgba(0, 20, 40, 0.8);
             backdrop-filter: blur(15px);
@@ -158,6 +170,13 @@
 
         .icon-btn {
             transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .icon-btn:hover {
@@ -169,6 +188,7 @@
             background: #1a1a2e;
             height: 4px;
             border-radius: 2px;
+            cursor: pointer;
         }
 
         input[type="range"]::-webkit-slider-thumb {
@@ -181,12 +201,23 @@
             cursor: pointer;
         }
 
-        /* スクロールバーのカスタマイズ */
+        /* Scrollbar styling */
         #guide-section::-webkit-scrollbar {
             width: 4px;
         }
         #guide-section::-webkit-scrollbar-thumb {
             background: #00d4ff;
+        }
+        
+        @media (max-width: 850px) {
+            #main-layout {
+                grid-template-columns: 1fr;
+                height: auto;
+                overflow-y: auto;
+            }
+            #guide-section {
+                display: none; /* Mobile optimization */
+            }
         }
     </style>
 </head>
@@ -198,24 +229,24 @@
             <h1 class="mod-title">Night-Mod</h1>
 
             <div class="scratch-bar">
-                <button id="green-flag" class="icon-btn">
+                <button id="green-flag" class="icon-btn" title="Start">
                     <svg width="28" height="28" viewBox="0 0 32 32">
                         <path fill="#00ff88" d="M6 4v24l20-12L6 4z"/>
                     </svg>
                 </button>
-                <button id="stop-all" class="icon-btn">
+                <button id="stop-all" class="icon-btn" title="Stop">
                     <svg width="28" height="28" viewBox="0 0 32 32">
                         <path fill="#ff3366" d="M10 4h12l6 6v12l-6 6H10l-6-6V10l6-6z"/>
                     </svg>
                 </button>
                 <div class="ml-auto flex items-center">
                     <span class="status-light"></span>
-                    <span id="status-bar" class="text-[10px] tracking-[0.2em] font-bold text-[#00d4ff]">CORE ACTIVE</span>
+                    <span id="status-bar" class="text-[10px] tracking-[0.2em] font-bold text-[#00d4ff]">CONNECTING...</span>
                 </div>
             </div>
 
             <div id="canvas-container">
-                <canvas id="stage-canvas"></canvas>
+                <canvas id="stage-canvas" width="480" height="360"></canvas>
             </div>
 
             <div class="controls-panel">
@@ -267,9 +298,9 @@
     </div>
 
     <script>
-        // 基本設定
+        // Keyboard scroll prevention
         window.addEventListener('keydown', (e) => {
-            if (e.code === 'Space' && e.target === document.body) {
+            if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code) && e.target === document.body) {
                 e.preventDefault();
             }
         }, false);
@@ -277,12 +308,16 @@
         let retryCount = 0;
         const maxRetries = 30;
 
+        // Helper to find constructors in loaded libraries
         const getConstructor = (lib) => {
             if (typeof lib === 'function') return lib;
             if (lib && typeof lib.default === 'function') return lib.default;
             if (lib && typeof lib === 'object') {
                 for (const key in lib) {
                     if (typeof lib[key] === 'function' && key.toLowerCase().includes('storage')) {
+                        return lib[key];
+                    }
+                    if (typeof lib[key] === 'function' && (key === 'VirtualMachine' || key === 'ScratchRender')) {
                         return lib[key];
                     }
                 }
@@ -299,13 +334,10 @@
             const fpsSlider = document.getElementById('fps-slider');
             const fpsValueDisplay = document.getElementById('fps-value');
 
-            const rawVM = window.VirtualMachine;
-            const rawRenderer = window.ScratchRender;
-            const rawStorage = window.ScratchStorage;
-
-            const ActualVM = getConstructor(rawVM);
-            const ActualRenderer = getConstructor(rawRenderer);
-            const ActualStorage = getConstructor(rawStorage);
+            // Access globally loaded Scratch libs
+            const ActualVM = getConstructor(window.VirtualMachine);
+            const ActualRenderer = getConstructor(window.ScratchRender);
+            const ActualStorage = getConstructor(window.ScratchStorage);
 
             if (!ActualVM || !ActualRenderer || !ActualStorage) {
                 if (retryCount < maxRetries) {
@@ -315,6 +347,7 @@
                     return;
                 }
                 statusBar.textContent = "FAILURE";
+                console.error("Scratch libraries failed to load.");
                 return;
             }
 
@@ -331,6 +364,7 @@
                 let targetFPS = 30;
                 let lastStepTime = performance.now();
 
+                // Custom Game Loop for FPS Overclocking
                 const customStep = () => {
                     const now = performance.now();
                     const interval = 1000 / targetFPS;
@@ -346,16 +380,20 @@
                 const updateFPS = (fps) => {
                     targetFPS = fps;
                     fpsValueDisplay.textContent = fps;
+                    // Attempt to set internal frame rate if supported
                     if (typeof vm.setRuntimeOptions === 'function') {
                         vm.setRuntimeOptions({ frameRate: fps });
                     }
-                    vm.runtime.frameLoopTimeout = 1000 / fps;
+                    if (vm.runtime) {
+                        vm.runtime.frameLoopTimeout = 1000 / fps;
+                    }
                 };
 
                 fpsSlider.addEventListener('input', (e) => {
                     updateFPS(parseInt(e.target.value));
                 });
 
+                // IO Handling
                 const getMousePos = (e) => {
                     const rect = canvas.getBoundingClientRect();
                     return {
@@ -380,23 +418,23 @@
 
                 window.addEventListener('keydown', (e) => {
                     vm.postIOData('keyboard', { key: e.key, isDown: true });
-                    if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
-                        e.preventDefault();
-                    }
                 });
 
                 window.addEventListener('keyup', (e) => {
                     vm.postIOData('keyboard', { key: e.key, isDown: false });
                 });
 
+                // Start VM
                 vm.start();
+                
+                // Disable internal stepping to use our custom high-speed step
                 if (vm.runtime._steppingInterval) {
                     clearInterval(vm.runtime._steppingInterval);
                 }
                 requestAnimationFrame(customStep);
-                
                 updateFPS(30);
 
+                // File loading
                 fileInput.addEventListener('change', async (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
@@ -419,19 +457,21 @@
                 greenFlagBtn.addEventListener('click', () => vm.greenFlag());
                 stopBtn.addEventListener('click', () => vm.stopAll());
 
+                // Rendering loop
                 const draw = () => {
                     renderer.draw();
                     requestAnimationFrame(draw);
                 };
                 draw();
-                
+
             } catch (initErr) {
                 statusBar.textContent = "INIT ERROR";
                 console.error(initErr);
             }
         };
 
-        initScratchPlayer();
+        // Launch on window load
+        window.onload = initScratchPlayer;
     </script>
 </body>
 </html>
