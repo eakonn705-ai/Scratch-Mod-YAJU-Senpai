@@ -22,7 +22,8 @@
     </script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;900&family=Rajdhani:wght@300;500;700&display=swap');
+        /* 1. 高級感のあるフォント(Cinzel Decorative)を追加 */
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Orbitron:wght@400;900&family=Rajdhani:wght@300;500;700&display=swap');
 
         html, body {
             margin: 0;
@@ -31,8 +32,8 @@
             height: 100%;
             overflow: hidden;
             font-family: 'Rajdhani', sans-serif;
-            background-color: #050510; /* フォールバック背景色 */
-            background-image: url('night-mod.png.jpg');
+            background-color: #050510;
+            background-image: url('night-mod.png.jpg'); /* ファイル名維持 */
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
@@ -62,7 +63,6 @@
             z-index: 1;
         }
 
-        /* Player Section */
         #player-section {
             display: flex;
             flex-direction: column;
@@ -70,15 +70,16 @@
             justify-content: center;
         }
 
+        /* 1. タイトルフォントをCinzel Decorativeに変更 */
         .mod-title {
-            font-family: 'Orbitron', sans-serif;
+            font-family: 'Cinzel Decorative', serif;
             font-size: 3.5rem;
             font-weight: 900;
             color: #fff;
-            letter-spacing: 0.2em;
-            text-shadow: 0 0 15px #00d4ff, 0 0 30px #00d4ff;
+            letter-spacing: 0.1em;
+            text-shadow: 0 0 10px rgba(0, 212, 255, 0.8), 0 0 30px rgba(0, 212, 255, 0.4);
             margin-bottom: 20px;
-            transform: skew(-10deg);
+            /* transform: skew(-10deg); 高級感を出すため斜体解除 */
         }
 
         #canvas-container {
@@ -117,7 +118,6 @@
             box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
         }
 
-        /* Guide Section */
         #guide-section {
             background: rgba(0, 20, 40, 0.8);
             backdrop-filter: blur(15px);
@@ -201,7 +201,6 @@
             cursor: pointer;
         }
 
-        /* Scrollbar styling */
         #guide-section::-webkit-scrollbar {
             width: 4px;
         }
@@ -216,7 +215,7 @@
                 overflow-y: auto;
             }
             #guide-section {
-                display: none; /* Mobile optimization */
+                display: none;
             }
         }
     </style>
@@ -250,12 +249,14 @@
             </div>
 
             <div class="controls-panel">
+                <!-- 4. ファイル選択プログラム維持 -->
                 <input type="file" id="file-input" accept=".sb3" 
                     class="block w-full text-xs text-blue-300 mb-4 file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-[#00d4ff] file:text-black hover:file:opacity-80 cursor-pointer"/>
                 
                 <div class="border-t border-white/10 pt-4">
                     <div class="flex justify-between items-center mb-2">
-                        <span class="text-[11px] font-bold text-blue-300 uppercase tracking-widest">Temporal Frequency</span>
+                        <!-- 2. 表示をFPSに変更 -->
+                        <span class="text-[11px] font-bold text-blue-300 uppercase tracking-widest">FPS</span>
                         <span class="text-xs text-white font-mono"><span id="fps-value">30</span> FPS</span>
                     </div>
                     <input type="range" id="fps-slider" min="30" max="120" value="30" class="w-full">
@@ -291,7 +292,8 @@
             </div>
 
             <div class="mt-8 pt-6 border-t border-white/10 text-[10px] text-gray-400">
-                <p>System Version: 2.5.0-Flash</p>
+                <!-- 3. バージョン表示をGemini 3.1に変更 -->
+                <p>System Version: Gemini 3.1</p>
                 <p>Environment: Production</p>
             </div>
         </aside>
@@ -308,7 +310,6 @@
         let retryCount = 0;
         const maxRetries = 30;
 
-        // Helper to find constructors in loaded libraries
         const getConstructor = (lib) => {
             if (typeof lib === 'function') return lib;
             if (lib && typeof lib.default === 'function') return lib.default;
@@ -334,7 +335,6 @@
             const fpsSlider = document.getElementById('fps-slider');
             const fpsValueDisplay = document.getElementById('fps-value');
 
-            // Access globally loaded Scratch libs
             const ActualVM = getConstructor(window.VirtualMachine);
             const ActualRenderer = getConstructor(window.ScratchRender);
             const ActualStorage = getConstructor(window.ScratchStorage);
@@ -347,7 +347,6 @@
                     return;
                 }
                 statusBar.textContent = "FAILURE";
-                console.error("Scratch libraries failed to load.");
                 return;
             }
 
@@ -364,7 +363,6 @@
                 let targetFPS = 30;
                 let lastStepTime = performance.now();
 
-                // Custom Game Loop for FPS Overclocking
                 const customStep = () => {
                     const now = performance.now();
                     const interval = 1000 / targetFPS;
@@ -380,7 +378,6 @@
                 const updateFPS = (fps) => {
                     targetFPS = fps;
                     fpsValueDisplay.textContent = fps;
-                    // Attempt to set internal frame rate if supported
                     if (typeof vm.setRuntimeOptions === 'function') {
                         vm.setRuntimeOptions({ frameRate: fps });
                     }
@@ -393,7 +390,6 @@
                     updateFPS(parseInt(e.target.value));
                 });
 
-                // IO Handling
                 const getMousePos = (e) => {
                     const rect = canvas.getBoundingClientRect();
                     return {
@@ -424,17 +420,15 @@
                     vm.postIOData('keyboard', { key: e.key, isDown: false });
                 });
 
-                // Start VM
                 vm.start();
                 
-                // Disable internal stepping to use our custom high-speed step
                 if (vm.runtime._steppingInterval) {
                     clearInterval(vm.runtime._steppingInterval);
                 }
                 requestAnimationFrame(customStep);
                 updateFPS(30);
 
-                // File loading
+                // 4. ファイル読込ロジック維持
                 fileInput.addEventListener('change', async (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
@@ -457,7 +451,6 @@
                 greenFlagBtn.addEventListener('click', () => vm.greenFlag());
                 stopBtn.addEventListener('click', () => vm.stopAll());
 
-                // Rendering loop
                 const draw = () => {
                     renderer.draw();
                     requestAnimationFrame(draw);
@@ -470,7 +463,6 @@
             }
         };
 
-        // Launch on window load
         window.onload = initScratchPlayer;
     </script>
 </body>
