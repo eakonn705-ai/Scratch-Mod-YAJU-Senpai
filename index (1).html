@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ScratchMod JP</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+  <!-- ヘッダー -->
+  <header id="header">
+    <div class="logo">
+      <span class="logo-icon">⬡</span>
+      <span class="logo-text">ScratchMod <em>JP</em></span>
+    </div>
+    <div class="header-controls">
+      <button id="btn-load" class="btn btn-primary" title="sb3ファイルを読み込む">
+        <span>📂</span> sb3を開く
+      </button>
+      <button id="btn-run" class="btn btn-green" disabled title="プロジェクトを実行">
+        <span>▶</span> 実行
+      </button>
+      <button id="btn-stop" class="btn btn-red" disabled title="停止">
+        <span>■</span> 停止
+      </button>
+      <button id="btn-save" class="btn btn-secondary" disabled title="sb3として保存">
+        <span>💾</span> 保存
+      </button>
+      <div class="mode-toggle">
+        <button id="mode-edit" class="mode-btn active">編集</button>
+        <button id="mode-run" class="mode-btn">実行</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- メインエリア -->
+  <div id="main">
+    <!-- スプライトパネル -->
+    <div id="sprite-panel">
+      <div class="panel-title">スプライト</div>
+      <div id="sprite-list"></div>
+      <div class="panel-title" style="margin-top:10px">背景</div>
+      <div id="backdrop-list"></div>
+    </div>
+
+    <!-- ブロックエディタ -->
+    <div id="editor-area">
+      <div id="blockly-div"></div>
+    </div>
+
+    <!-- ステージ＋コンソール -->
+    <div id="right-panel">
+      <div id="stage-wrapper">
+        <canvas id="scratch-stage" width="480" height="360"></canvas>
+        <div id="stage-overlay" class="visible">
+          <div class="overlay-content">
+            <div class="overlay-icon">⬡</div>
+            <p>sb3ファイルを読み込んでください</p>
+            <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">📂 ファイルを選択</button>
+          </div>
+        </div>
+      </div>
+      <div id="console-panel">
+        <div class="console-title">コンソール <button id="btn-clear-console" class="tiny-btn">クリア</button></div>
+        <div id="console-output"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ステータスバー -->
+  <div id="statusbar">
+    <span id="status-text">準備完了 — sb3ファイルを開いてください</span>
+    <span id="project-name">プロジェクト未読込</span>
+  </div>
+</div>
+
+<!-- 隠しファイル入力 -->
+<input type="file" id="file-input" accept=".sb3" style="display:none">
+
+<!-- 拡張機能パネル（モーダル） -->
+<div id="ext-modal" class="modal hidden">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>独自拡張機能</h2>
+      <button class="modal-close" id="ext-close">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="ext-card" data-ext="internet">
+        <div class="ext-icon">🌐</div>
+        <div>
+          <div class="ext-name">インターネット取得</div>
+          <div class="ext-desc">現在時刻・天気・為替などをAPIで取得するブロック</div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="btn-add-internet">追加</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TurboWarp スタンドアロンVM -->
+<script src="https://cdn.jsdelivr.net/npm/scratch-vm@3.19.5/dist/node/scratch-vm.js"></script>
+<script src="js/mod.js"></script>
+</body>
+</html>
