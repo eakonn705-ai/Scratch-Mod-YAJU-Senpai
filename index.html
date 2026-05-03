@@ -6,6 +6,152 @@
     <title>Night-Mod Interface</title>
     
     <!-- Scratch Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        // =====================================================================
+        // 翻訳拡張パッチ (JSONP方式 / GAS経由)
+        // translate-service.scratch.mit.edu は外部から403になるため
+        // GAS翻訳API（JSONP）にリダイレクトする
+        // fetch と XMLHttpRequest の両方をパッチ済み
+        // =====================================================================
+        const GAS_TRANSLATE_URL = 'https://script.google.com/macros/s/AKfycbwlHpX8rcmTnYQxxof9hP1t2RW4qVkQ6QjZTTD9Af1PHIsbINhDFClUfSmGgaRBP0sJ/exec';
+
+        // GASのURLかどうか判定
+        function isTranslateURL(url) {
+            return typeof url === 'string' && url.includes('translate-service.scratch.mit.edu');
+        }
+
+        // URLから text と language パラメータを抽出
+        function parseTranslateParams(url) {
+            const u = new URL(url);
+            return {
+                text: u.searchParams.get('text') || '',
+                lang: u.searchParams.get('language') || 'en'
+            };
+        }
+
+        // JSONP呼び出し: コールバック名に使えない文字を除去し安全な名前を生成
+        let __gasJSONP_counter = 0;
+        function gasTranslateJSONP(text, lang) {
+            return new Promise((resolve, reject) => {
+                const cbName = '__gasJSONP' + (++__gasJSONP_counter);
+                const script = document.createElement('script');
+                const timer = setTimeout(() => {
+                    cleanup();
+                    reject(new Error('[NIGHT-MOD] JSONP timeout'));
+                }, 10000);
+
+                function cleanup() {
+                    clearTimeout(timer);
+                    delete window[cbName];
+                    if (script.parentNode) script.parentNode.removeChild(script);
+                }
+
+                window[cbName] = function(data) {
+                    cleanup();
+                    console.log('[NIGHT-MOD] JSONP OK:', data);
+                    resolve(data.result || '');
+                };
+
+                script.onerror = function(err) {
+                    cleanup();
+                    reject(new Error('[NIGHT-MOD] JSONP script load error'));
+                };
+
+                const src = GAS_TRANSLATE_URL
+                    + '?text=' + encodeURIComponent(text)
+                    + '&source=auto'
+                    + '&target=' + encodeURIComponent(lang)
+                    + '&callback=' + cbName;
+                console.log('[NIGHT-MOD] JSONP request:', src);
+                script.src = src;
+                document.head.appendChild(script);
+            });
+        }
+
+        // 翻訳結果から scratch-vm が期待する Response を生成
+        function makeTranslateResponse(translated) {
+            const fakeBody = JSON.stringify({result: translated});
+            return new Response(fakeBody, {status: 200, headers: {'Content-Type': 'application/json'}});
+        }
+
+        // ── fetch パッチ ──
+        (function() {
+            window.fetch = (function(nativeFetch) {
+                return function(url, options, ...rest) {
+                    if (isTranslateURL(url)) {
+                        try {
+                            const {text, lang} = parseTranslateParams(url);
+                            console.log('[NIGHT-MOD] fetch intercepted: text=' + text + ' lang=' + lang);
+                            return gasTranslateJSONP(text, lang)
+                                .then(makeTranslateResponse)
+                                .catch(e => {
+                                    console.warn('[NIGHT-MOD] JSONP failed:', e);
+                                    return Promise.reject(e);
+                                });
+                        } catch(e) {
+                            console.warn('[NIGHT-MOD] fetch patch error:', e);
+                            return Promise.reject(e);
+                        }
+                    }
+                    return nativeFetch.call(this, url, options, ...rest);
+                };
+            })(window.fetch);
+        })();
+
+        // ── XMLHttpRequest パッチ ──
+        // scratch-vm の一部バージョンは fetch ではなく XHR を使う
+        (function() {
+            const OrigXHR = window.XMLHttpRequest;
+            function PatchedXHR() {
+                const xhr = new OrigXHR();
+                let _intercepted = false;
+                let _url = '';
+
+                const open = xhr.open.bind(xhr);
+                xhr.open = function(method, url, ...args) {
+                    _url = url;
+                    if (isTranslateURL(url)) {
+                        _intercepted = true;
+                        console.log('[NIGHT-MOD] XHR intercepted:', url);
+                        // ダミーのURLを開いておく（実際には送信しない）
+                        return open('GET', 'about:blank', true);
+                    }
+                    return open(method, url, ...args);
+                };
+
+                const send = xhr.send.bind(xhr);
+                xhr.send = function(body) {
+                    if (_intercepted) {
+                        try {
+                            const {text, lang} = parseTranslateParams(_url);
+                            gasTranslateJSONP(text, lang).then(translated => {
+                                const fakeBody = JSON.stringify({result: translated});
+                                // readyState と status を偽装して onload を呼ぶ
+                                Object.defineProperty(xhr, 'readyState', {get: () => 4});
+                                Object.defineProperty(xhr, 'status',    {get: () => 200});
+                                Object.defineProperty(xhr, 'responseText', {get: () => fakeBody});
+                                Object.defineProperty(xhr, 'response',     {get: () => fakeBody});
+                                if (typeof xhr.onload === 'function') xhr.onload(new Event('load'));
+                                if (typeof xhr.onreadystatechange === 'function') xhr.onreadystatechange();
+                            }).catch(e => {
+                                console.warn('[NIGHT-MOD] XHR JSONP failed:', e);
+                                if (typeof xhr.onerror === 'function') xhr.onerror(new Event('error'));
+                            });
+                        } catch(e) {
+                            console.warn('[NIGHT-MOD] XHR patch error:', e);
+                        }
+                        return;
+                    }
+                    return send(body);
+                };
+
+                return xhr;
+            }
+            PatchedXHR.prototype = OrigXHR.prototype;
+            window.XMLHttpRequest = PatchedXHR;
+        })();
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/scratch-vm/dist/web/scratch-vm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/scratch-render/dist/web/scratch-render.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/scratch-storage/dist/web/scratch-storage.js"></script>
@@ -377,6 +523,16 @@
                 const storage = new ActualStorage();
 
                 vm.attachRenderer(renderer);
+
+                // storage に Scratch CDN のアセット取得先を登録
+                // これがないとローカルsb3内のアセット（画像・音声）を読み込めない
+                const AssetType = storage.AssetType;
+                const DataFormat = storage.DataFormat;
+                storage.addWebStore(
+                    [AssetType.ImageVector, AssetType.ImageBitmap, AssetType.Sound],
+                    (asset) => `https://assets.scratch.mit.edu/internalapi/asset/${asset.assetId}.${asset.dataFormat}/get/`
+                );
+
                 vm.attachStorage(storage);
 
                 // ★修正1: AudioEngine をアタッチ（音が出ない問題を修正）
@@ -615,6 +771,37 @@
                 // 描画ループ開始
                 requestAnimationFrame(renderLoop);
 
+                // sb3 に含まれる extensions を loadProject 前にロードするヘルパー
+                // ★重要: JSZip.loadAsync() は ArrayBuffer を内部で detach する場合があるため、
+                //         必ず .slice(0) でコピーを作ってから渡す
+                const loadProjectExtensions = async (arrayBuffer) => {
+                    try {
+                        const JSZip = window.JSZip;
+                        if (!JSZip) return;
+                        // コピーを使ってzipを読む（元のbufferを壊さない）
+                        const zipCopy = arrayBuffer.slice(0);
+                        const zip = await JSZip.loadAsync(zipCopy);
+                        const projectJsonFile = zip.file('project.json');
+                        if (!projectJsonFile) return;
+                        const projectJson = await projectJsonFile.async('string');
+                        const projectData = JSON.parse(projectJson);
+                        const extensions = projectData.extensions || [];
+                        console.log('[NIGHT-MOD] extensions in project:', extensions);
+                        for (const extId of extensions) {
+                            if (!vm.extensionManager.isExtensionLoaded(extId)) {
+                                try {
+                                    await vm.extensionManager.loadExtensionURL(extId);
+                                    console.log('[NIGHT-MOD] Extension loaded:', extId);
+                                } catch(e) {
+                                    console.error('[NIGHT-MOD] Extension load FAILED:', extId, e.message || e);
+                                }
+                            }
+                        }
+                    } catch(e) {
+                        console.warn('[NIGHT-MOD] Extension pre-load failed:', e);
+                    }
+                };
+
                 fileInput.addEventListener('change', async (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
@@ -622,12 +809,18 @@
                     const reader = new FileReader();
                     reader.onload = async (event) => {
                         try {
-                            await vm.loadProject(event.target.result);
+                            const buffer = event.target.result;
+                            // 拡張機能を先にロード（JSZipはコピーを使うので元bufferは無傷）
+                            await loadProjectExtensions(buffer);
+                            await vm.loadProject(buffer);
                             statusBar.textContent = "CORE ACTIVE";
                             vm.greenFlag();
                         } catch (err) {
+                            // errは文字列でthrowされる場合もある（scratch-parserのvalidationError）
+                            const msg = (err && err.message) ? err.message : String(err);
                             statusBar.textContent = "ERROR";
-                            console.error(err);
+                            console.error('[NIGHT-MOD loadProject error]', err);
+                            alert('読み込みエラー:\n' + msg);
                         }
                     };
                     reader.readAsArrayBuffer(file);
@@ -637,8 +830,8 @@
                 stopBtn.addEventListener('click', () => vm.stopAll());
 
             } catch (initErr) {
-                statusBar.textContent = "INIT ERROR";
-                console.error(initErr);
+                statusBar.textContent = "INIT ERROR: " + initErr.message;
+                console.error('[NIGHT-MOD initErr]', initErr);
             }
         };
 
