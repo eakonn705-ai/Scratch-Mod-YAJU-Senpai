@@ -54,17 +54,19 @@
         }
  
         // ── JSONP 翻訳呼び出し ──
+        // GAS の ContentService はカスタムCORSヘッダーを付与できないため
+        // fetch では常にCORSエラーになる。JSONPのみを使う。
         let __gasJSONP_counter = 0;
         function gasTranslateJSONP(text, lang) {
             return new Promise((resolve, reject) => {
                 const cbName = '__gasJSONP' + (++__gasJSONP_counter);
                 const script = document.createElement('script');
  
-                // 15秒タイムアウト後はCORSフェッチでリトライ
                 const timer = setTimeout(() => {
                     cleanup();
-                    console.warn('[NIGHT-MOD] JSONP timeout, retrying with fetch...');
-                    gasTranslateFetch(text, lang).then(resolve).catch(reject);
+                    console.warn('[NIGHT-MOD] JSONP timeout');
+                    // タイムアウトは空文字を返してscratch-vmをブロックしない
+                    resolve('');
                 }, 15000);
  
                 function cleanup() {
@@ -79,11 +81,12 @@
                     resolve(data.result || '');
                 };
  
-                // JSONPが失敗した場合（スクリプト読み込みエラー）はfetchでリトライ
                 script.onerror = function() {
                     cleanup();
-                    console.warn('[NIGHT-MOD] JSONP script error, retrying with fetch...');
-                    gasTranslateFetch(text, lang).then(resolve).catch(reject);
+                    // onerrorはGASアクセス権が「全員（匿名ユーザーを含む）」でない場合に発生する
+                    // その場合は空文字を返してブロックしない
+                    console.error('[NIGHT-MOD] JSONP failed. GASのデプロイ設定で「アクセスできるユーザー」を「全員（匿名ユーザーを含む）」にしてください。');
+                    resolve('');
                 };
  
                 const src = GAS_TRANSLATE_URL
@@ -97,33 +100,18 @@
             });
         }
  
-        // ── CORSフェッチ（JSONPのフォールバック）──
-        // パッチ前のネイティブfetchを保存しておく
-        const _nativeFetch = window.fetch.bind(window);
-        function gasTranslateFetch(text, lang) {
-            const url = GAS_TRANSLATE_URL
-                + '?text='   + encodeURIComponent(text)
-                + '&source=auto'
-                + '&target=' + encodeURIComponent(lang);
-            return _nativeFetch(url)
-                .then(r => r.json())
-                .then(d => d.result || '');
-        }
- 
         // ── fetch パッチ ──
+        // translate-service へのリクエストをJSONP経由のGASに横取りする
         // scratch-storage v6+ は Request オブジェクトで fetch を呼ぶため extractURL で対応
+        // ※ GAS は ContentService でカスタムCORSヘッダーを付与できないため
+        //    fetch で直接叩くと必ずCORSエラーになる → JSONPのみで処理する
         (function() {
             const nativeFetch = window.fetch.bind(window);
             window.fetch = function(resource, options, ...rest) {
                 if (isTranslateURL(resource)) {
-                    try {
-                        const { text, lang } = parseTranslateParams(resource);
-                        console.log('[NIGHT-MOD] fetch intercepted: text=' + text + ' lang=' + lang);
-                        return gasTranslateJSONP(text, lang).then(makeTranslateResponse);
-                    } catch(e) {
-                        console.warn('[NIGHT-MOD] fetch patch error:', e);
-                        return Promise.reject(e);
-                    }
+                    const { text, lang } = parseTranslateParams(resource);
+                    console.log('[NIGHT-MOD] fetch intercepted: text=' + text + ' lang=' + lang);
+                    return gasTranslateJSONP(text, lang).then(makeTranslateResponse);
                 }
                 return nativeFetch(resource, options, ...rest);
             };
@@ -871,3 +859,4 @@
     </script>
 </body>
 </html>
+ 
