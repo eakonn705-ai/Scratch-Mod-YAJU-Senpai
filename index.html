@@ -12,146 +12,171 @@
         // 翻訳拡張パッチ (JSONP方式 / GAS経由)
         // translate-service.scratch.mit.edu は外部から403になるため
         // GAS翻訳API（JSONP）にリダイレクトする
-        // fetch と XMLHttpRequest の両方をパッチ済み
+        // fetch / XMLHttpRequest の両方をパッチ済み
+        // ★ scratch-storage v6+ は fetch に Request オブジェクトを渡すため対応済み
         // =====================================================================
-        const GAS_TRANSLATE_URL = 'https://script.google.com/macros/s/AKfycbwlHpX8rcmTnYQxxof9hP1t2RW4qVkQ6QjZTTD9Af1PHIsbINhDFClUfSmGgaRBP0sJ/exec';
-
-        // GASのURLかどうか判定
-        function isTranslateURL(url) {
-            return typeof url === 'string' && url.includes('translate-service.scratch.mit.edu');
+        const GAS_TRANSLATE_URL = 'https://script.google.com/macros/s/AKfycbxy7utJFRiK9vUif8XqYO4q7m7AvPF0LZXVeya3eR8kroGA_P6RVGVcFkeVnR8bslTU/exec';
+ 
+        // URLまたはRequestオブジェクトから文字列URLを取り出す
+        function extractURL(resource) {
+            if (typeof resource === 'string') return resource;
+            if (resource && typeof resource === 'object' && resource.url) return resource.url;
+            return '';
         }
-
+ 
+        // translate-service へのリクエストかどうか判定
+        function isTranslateURL(resource) {
+            return extractURL(resource).includes('translate-service.scratch.mit.edu');
+        }
+ 
         // URLから text と language パラメータを抽出
-        function parseTranslateParams(url) {
-            const u = new URL(url);
-            return {
-                text: u.searchParams.get('text') || '',
-                lang: u.searchParams.get('language') || 'en'
-            };
+        // scratch-vm は ?language=<code>&text=<text> の形式で送る
+        function parseTranslateParams(resource) {
+            try {
+                const u = new URL(extractURL(resource));
+                return {
+                    text: u.searchParams.get('text') || '',
+                    // scratch-vmは 'language' キーを使う
+                    lang: u.searchParams.get('language') || u.searchParams.get('target') || 'en'
+                };
+            } catch(e) {
+                return { text: '', lang: 'en' };
+            }
         }
-
-        // JSONP呼び出し: コールバック名に使えない文字を除去し安全な名前を生成
+ 
+        // 翻訳結果から scratch-vm が期待する Response を生成
+        function makeTranslateResponse(translated) {
+            const body = JSON.stringify({ result: translated });
+            return new Response(body, {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+ 
+        // ── JSONP 翻訳呼び出し ──
         let __gasJSONP_counter = 0;
         function gasTranslateJSONP(text, lang) {
             return new Promise((resolve, reject) => {
                 const cbName = '__gasJSONP' + (++__gasJSONP_counter);
                 const script = document.createElement('script');
+ 
+                // 15秒タイムアウト後はCORSフェッチでリトライ
                 const timer = setTimeout(() => {
                     cleanup();
-                    reject(new Error('[NIGHT-MOD] JSONP timeout'));
-                }, 10000);
-
+                    console.warn('[NIGHT-MOD] JSONP timeout, retrying with fetch...');
+                    gasTranslateFetch(text, lang).then(resolve).catch(reject);
+                }, 15000);
+ 
                 function cleanup() {
                     clearTimeout(timer);
                     delete window[cbName];
                     if (script.parentNode) script.parentNode.removeChild(script);
                 }
-
+ 
                 window[cbName] = function(data) {
                     cleanup();
                     console.log('[NIGHT-MOD] JSONP OK:', data);
                     resolve(data.result || '');
                 };
-
-                script.onerror = function(err) {
+ 
+                // JSONPが失敗した場合（スクリプト読み込みエラー）はfetchでリトライ
+                script.onerror = function() {
                     cleanup();
-                    reject(new Error('[NIGHT-MOD] JSONP script load error'));
+                    console.warn('[NIGHT-MOD] JSONP script error, retrying with fetch...');
+                    gasTranslateFetch(text, lang).then(resolve).catch(reject);
                 };
-
+ 
                 const src = GAS_TRANSLATE_URL
-                    + '?text=' + encodeURIComponent(text)
+                    + '?text='     + encodeURIComponent(text)
                     + '&source=auto'
-                    + '&target=' + encodeURIComponent(lang)
+                    + '&target='   + encodeURIComponent(lang)
                     + '&callback=' + cbName;
                 console.log('[NIGHT-MOD] JSONP request:', src);
                 script.src = src;
                 document.head.appendChild(script);
             });
         }
-
-        // 翻訳結果から scratch-vm が期待する Response を生成
-        function makeTranslateResponse(translated) {
-            const fakeBody = JSON.stringify({result: translated});
-            return new Response(fakeBody, {status: 200, headers: {'Content-Type': 'application/json'}});
+ 
+        // ── CORSフェッチ（JSONPのフォールバック）──
+        // パッチ前のネイティブfetchを保存しておく
+        const _nativeFetch = window.fetch.bind(window);
+        function gasTranslateFetch(text, lang) {
+            const url = GAS_TRANSLATE_URL
+                + '?text='   + encodeURIComponent(text)
+                + '&source=auto'
+                + '&target=' + encodeURIComponent(lang);
+            return _nativeFetch(url)
+                .then(r => r.json())
+                .then(d => d.result || '');
         }
-
+ 
         // ── fetch パッチ ──
+        // scratch-storage v6+ は Request オブジェクトで fetch を呼ぶため extractURL で対応
         (function() {
-            window.fetch = (function(nativeFetch) {
-                return function(url, options, ...rest) {
-                    if (isTranslateURL(url)) {
-                        try {
-                            const {text, lang} = parseTranslateParams(url);
-                            console.log('[NIGHT-MOD] fetch intercepted: text=' + text + ' lang=' + lang);
-                            return gasTranslateJSONP(text, lang)
-                                .then(makeTranslateResponse)
-                                .catch(e => {
-                                    console.warn('[NIGHT-MOD] JSONP failed:', e);
-                                    return Promise.reject(e);
-                                });
-                        } catch(e) {
-                            console.warn('[NIGHT-MOD] fetch patch error:', e);
-                            return Promise.reject(e);
-                        }
+            const nativeFetch = window.fetch.bind(window);
+            window.fetch = function(resource, options, ...rest) {
+                if (isTranslateURL(resource)) {
+                    try {
+                        const { text, lang } = parseTranslateParams(resource);
+                        console.log('[NIGHT-MOD] fetch intercepted: text=' + text + ' lang=' + lang);
+                        return gasTranslateJSONP(text, lang).then(makeTranslateResponse);
+                    } catch(e) {
+                        console.warn('[NIGHT-MOD] fetch patch error:', e);
+                        return Promise.reject(e);
                     }
-                    return nativeFetch.call(this, url, options, ...rest);
-                };
-            })(window.fetch);
+                }
+                return nativeFetch(resource, options, ...rest);
+            };
         })();
-
+ 
         // ── XMLHttpRequest パッチ ──
-        // scratch-vm の一部バージョンは fetch ではなく XHR を使う
+        // 古いバージョンのscratch-vmはXHRを使う場合がある
         (function() {
             const OrigXHR = window.XMLHttpRequest;
             function PatchedXHR() {
                 const xhr = new OrigXHR();
                 let _intercepted = false;
                 let _url = '';
-
-                const open = xhr.open.bind(xhr);
+ 
+                const origOpen = xhr.open.bind(xhr);
                 xhr.open = function(method, url, ...args) {
                     _url = url;
                     if (isTranslateURL(url)) {
                         _intercepted = true;
                         console.log('[NIGHT-MOD] XHR intercepted:', url);
-                        // ダミーのURLを開いておく（実際には送信しない）
-                        return open('GET', 'about:blank', true);
+                        return origOpen('GET', 'about:blank', true);
                     }
-                    return open(method, url, ...args);
+                    return origOpen(method, url, ...args);
                 };
-
-                const send = xhr.send.bind(xhr);
+ 
+                const origSend = xhr.send.bind(xhr);
                 xhr.send = function(body) {
                     if (_intercepted) {
-                        try {
-                            const {text, lang} = parseTranslateParams(_url);
-                            gasTranslateJSONP(text, lang).then(translated => {
-                                const fakeBody = JSON.stringify({result: translated});
-                                // readyState と status を偽装して onload を呼ぶ
-                                Object.defineProperty(xhr, 'readyState', {get: () => 4});
-                                Object.defineProperty(xhr, 'status',    {get: () => 200});
-                                Object.defineProperty(xhr, 'responseText', {get: () => fakeBody});
-                                Object.defineProperty(xhr, 'response',     {get: () => fakeBody});
-                                if (typeof xhr.onload === 'function') xhr.onload(new Event('load'));
-                                if (typeof xhr.onreadystatechange === 'function') xhr.onreadystatechange();
-                            }).catch(e => {
-                                console.warn('[NIGHT-MOD] XHR JSONP failed:', e);
-                                if (typeof xhr.onerror === 'function') xhr.onerror(new Event('error'));
-                            });
-                        } catch(e) {
-                            console.warn('[NIGHT-MOD] XHR patch error:', e);
-                        }
+                        const { text, lang } = parseTranslateParams(_url);
+                        gasTranslateJSONP(text, lang).then(translated => {
+                            const fakeBody = JSON.stringify({ result: translated });
+                            try { Object.defineProperty(xhr, 'readyState',   { get: () => 4,        configurable: true }); } catch(e){}
+                            try { Object.defineProperty(xhr, 'status',       { get: () => 200,      configurable: true }); } catch(e){}
+                            try { Object.defineProperty(xhr, 'responseText', { get: () => fakeBody, configurable: true }); } catch(e){}
+                            try { Object.defineProperty(xhr, 'response',     { get: () => fakeBody, configurable: true }); } catch(e){}
+                            if (typeof xhr.onload === 'function') xhr.onload(new Event('load'));
+                            if (typeof xhr.onreadystatechange === 'function') xhr.onreadystatechange();
+                        }).catch(e => {
+                            console.warn('[NIGHT-MOD] XHR translate failed:', e);
+                            if (typeof xhr.onerror === 'function') xhr.onerror(new Event('error'));
+                        });
                         return;
                     }
-                    return send(body);
+                    return origSend(body);
                 };
-
+ 
                 return xhr;
             }
             PatchedXHR.prototype = OrigXHR.prototype;
             window.XMLHttpRequest = PatchedXHR;
         })();
     </script>
+    <!-- Scratch Libraries: 順序依存があるため同期読み込み必須 -->
     <script src="https://cdn.jsdelivr.net/npm/scratch-vm/dist/web/scratch-vm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/scratch-render/dist/web/scratch-render.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/scratch-storage/dist/web/scratch-storage.js"></script>
@@ -165,17 +190,17 @@
 /*! For license information please see scratch-audio-web.js.LICENSE.txt */
 (()=>{var t={571(t){"use strict";var e={};t.exports=function(t){if("undefined"==typeof window)return null;var i=window.OfflineAudioContext||window.webkitOfflineAudioContext,n=window.AudioContext||window.webkitAudioContext;if(!n)return null;"number"==typeof t&&(t={sampleRate:t});var s=t&&t.sampleRate;if(t&&t.offline)return i?new i(t.channels||2,t.length,s||44100):null;var r=e[s];if(r)return r;try{r=new n(t)}catch(t){r=new n}return e[r.sampleRate]=e[s]=r,r}},7(t){"use strict";var e,i="object"==typeof Reflect?Reflect:null,n=i&&"function"==typeof i.apply?i.apply:function(t,e,i){return Function.prototype.apply.call(t,e,i)};e=i&&"function"==typeof i.ownKeys?i.ownKeys:Object.getOwnPropertySymbols?function(t){return Object.getOwnPropertyNames(t).concat(Object.getOwnPropertySymbols(t))}:function(t){return Object.getOwnPropertyNames(t)};var s=Number.isNaN||function(t){return t!=t};function r(){r.init.call(this)}t.exports=r,t.exports.once=function(t,e){return new Promise(function(i,n){function s(i){t.removeListener(e,r),n(i)}function r(){"function"==typeof t.removeListener&&t.removeListener("error",s),i([].slice.call(arguments))}g(t,e,r,{once:!0}),"error"!==e&&function(t,e){"function"==typeof t.on&&g(t,"error",e,{once:!0})}(t,s)})},r.EventEmitter=r,r.prototype._events=void 0,r.prototype._eventsCount=0,r.prototype._maxListeners=void 0;var o=10;function a(t){if("function"!=typeof t)throw new TypeError('The "listener" argument must be of type Function. Received type '+typeof t)}function u(t){return void 0===t._maxListeners?r.defaultMaxListeners:t._maxListeners}function h(t,e,i,n){var s,r,o,h;if(a(i),void 0===(r=t._events)?(r=t._events=Object.create(null),t._eventsCount=0):(void 0!==r.newListener&&(t.emit("newListener",e,i.listener?i.listener:i),r=t._events),o=r[e]),void 0===o)o=r[e]=i,++t._eventsCount;else if("function"==typeof o?o=r[e]=n?[i,o]:[o,i]:n?o.unshift(i):o.push(i),(s=u(t))>0&&o.length>s&&!o.warned){o.warned=!0;var c=new Error("Possible EventEmitter memory leak detected. "+o.length+" "+String(e)+" listeners added. Use emitter.setMaxListeners() to increase limit");c.name="MaxListenersExceededWarning",c.emitter=t,c.type=e,c.count=o.length,h=c,console&&console.warn&&console.warn(h)}return t}function c(){if(!this.fired)return this.target.removeListener(this.type,this.wrapFn),this.fired=!0,0===arguments.length?this.listener.call(this.target):this.listener.apply(this.target,arguments)}function l(t,e,i){var n={fired:!1,wrapFn:void 0,target:t,type:e,listener:i},s=c.bind(n);return s.listener=i,n.wrapFn=s,s}function d(t,e,i){var n=t._events;if(void 0===n)return[];var s=n[e];return void 0===s?[]:"function"==typeof s?i?[s.listener||s]:[s]:i?function(t){for(var e=new Array(t.length),i=0;i<e.length;++i)e[i]=t[i].listener||t[i];return e}(s):p(s,s.length)}function f(t){var e=this._events;if(void 0!==e){var i=e[t];if("function"==typeof i)return 1;if(void 0!==i)return i.length}return 0}function p(t,e){for(var i=new Array(e),n=0;n<e;++n)i[n]=t[n];return i}function g(t,e,i,n){if("function"==typeof t.on)n.once?t.once(e,i):t.on(e,i);else{if("function"!=typeof t.addEventListener)throw new TypeError('The "emitter" argument must be of type EventEmitter. Received type '+typeof t);t.addEventListener(e,function s(r){n.once&&t.removeEventListener(e,s),i(r)})}}Object.defineProperty(r,"defaultMaxListeners",{enumerable:!0,get:function(){return o},set:function(t){if("number"!=typeof t||t<0||s(t))throw new RangeError('The value of "defaultMaxListeners" is out of range. It must be a non-negative number. Received '+t+".");o=t}}),r.init=function(){void 0!==this._events&&this._events!==Object.getPrototypeOf(this)._events||(this._events=Object.create(null),this._eventsCount=0),this._maxListeners=this._maxListeners||void 0},r.prototype.setMaxListeners=function(t){if("number"!=typeof t||t<0||s(t))throw new RangeError('The value of "n" is out of range. It must be a non-negative number. Received '+t+".");return this._maxListeners=t,this},r.prototype.getMaxListeners=function(){return u(this)},r.prototype.emit=function(t){for(var e=[],i=1;i<arguments.length;i++)e.push(arguments[i]);var s="error"===t,r=this._events;if(void 0!==r)s=s&&void 0===r.error;else if(!s)return!1;if(s){var o;if(e.length>0&&(o=e[0]),o instanceof Error)throw o;var a=new Error("Unhandled error."+(o?" ("+o.message+")":""));throw a.context=o,a}var u=r[t];if(void 0===u)return!1;if("function"==typeof u)n(u,this,e);else{var h=u.length,c=p(u,h);for(i=0;i<h;++i)n(c[i],this,e)}return!0},r.prototype.addListener=function(t,e){return h(this,t,e,!1)},r.prototype.on=r.prototype.addListener,r.prototype.prependListener=function(t,e){return h(this,t,e,!0)},r.prototype.once=function(t,e){return a(e),this.on(t,l(this,t,e)),this},r.prototype.prependOnceListener=function(t,e){return a(e),this.prependListener(t,l(this,t,e)),this},r.prototype.removeListener=function(t,e){var i,n,s,r,o;if(a(e),void 0===(n=this._events))return this;if(void 0===(i=n[t]))return this;if(i===e||i.listener===e)0===--this._eventsCount?this._events=Object.create(null):(delete n[t],n.removeListener&&this.emit("removeListener",t,i.listener||e));else if("function"!=typeof i){for(s=-1,r=i.length-1;r>=0;r--)if(i[r]===e||i[r].listener===e){o=i[r].listener,s=r;break}if(s<0)return this;0===s?i.shift():function(t,e){for(;e+1<t.length;e++)t[e]=t[e+1];t.pop()}(i,s),1===i.length&&(n[t]=i[0]),void 0!==n.removeListener&&this.emit("removeListener",t,o||e)}return this},r.prototype.off=r.prototype.removeListener,r.prototype.removeAllListeners=function(t){var e,i,n;if(void 0===(i=this._events))return this;if(void 0===i.removeListener)return 0===arguments.length?(this._events=Object.create(null),this._eventsCount=0):void 0!==i[t]&&(0===--this._eventsCount?this._events=Object.create(null):delete i[t]),this;if(0===arguments.length){var s,r=Object.keys(i);for(n=0;n<r.length;++n)"removeListener"!==(s=r[n])&&this.removeAllListeners(s);return this.removeAllListeners("removeListener"),this._events=Object.create(null),this._eventsCount=0,this}if("function"==typeof(e=i[t]))this.removeListener(t,e);else if(void 0!==e)for(n=e.length-1;n>=0;n--)this.removeListener(t,e[n]);return this},r.prototype.listeners=function(t){return d(this,t,!0)},r.prototype.rawListeners=function(t){return d(this,t,!1)},r.listenerCount=function(t,e){return"function"==typeof t.listenerCount?t.listenerCount(e):f.call(t,e)},r.prototype.listenerCount=f,r.prototype.eventNames=function(){return this._eventsCount>0?e(this._events):[]}},173(t){function e(){this._events={}}e.prototype={on:function(t,e){this._events||(this._events={});var i=this._events;return(i[t]||(i[t]=[])).push(e),this},removeListener:function(t,e){var i,n=this._events[t]||[];for(i=n.length-1;i>=0&&n[i];i--)n[i]!==e&&n[i].cb!==e||n.splice(i,1)},removeAllListeners:function(t){t?this._events[t]&&(this._events[t]=[]):this._events={}},listeners:function(t){return this._events&&this._events[t]||[]},emit:function(t){this._events||(this._events={});var e,i=Array.prototype.slice.call(arguments,1),n=this._events[t]||[];for(e=n.length-1;e>=0&&n[e];e--)n[e].apply(this,i);return this},when:function(t,e){return this.once(t,e,!0)},once:function(t,e,i){if(!e)return this;function n(){i||this.removeListener(t,n),e.apply(this,arguments)&&i&&this.removeListener(t,n)}return n.cb=e,this.on(t,n),this}},e.mixin=function(t){var i,n=e.prototype;for(i in n)n.hasOwnProperty(i)&&(t.prototype[i]=n[i])},t.exports=e},84(t,e,i){var n=i(408),s={debug:1,info:2,warn:3,error:4};function r(){this.enabled=!0,this.defaultResult=!0,this.clear()}function o(t,e){return t.n.test?t.n.test(e):t.n==e}n.mixin(r),r.prototype.allow=function(t,e){return this._white.push({n:t,l:s[e]}),this},r.prototype.deny=function(t,e){return this._black.push({n:t,l:s[e]}),this},r.prototype.clear=function(){return this._white=[],this._black=[],this},r.prototype.test=function(t,e){var i,n=Math.max(this._white.length,this._black.length);for(i=0;i<n;i++){if(this._white[i]&&o(this._white[i],t)&&s[e]>=this._white[i].l)return!0;if(this._black[i]&&o(this._black[i],t)&&s[e]<=this._black[i].l)return!1}return this.defaultResult},r.prototype.write=function(t,e,i){if(!this.enabled||this.test(t,e))return this.emit("item",t,e,i)},t.exports=r},15(t,e,i){var n=i(408),s=i(84),r=new n,o=Array.prototype.slice;e=t.exports=function(t){var i=function(){return r.write(t,void 0,o.call(arguments)),i};return i.debug=function(){return r.write(t,"debug",o.call(arguments)),i},i.info=function(){return r.write(t,"info",o.call(arguments)),i},i.warn=function(){return r.write(t,"warn",o.call(arguments)),i},i.error=function(){return r.write(t,"error",o.call(arguments)),i},i.log=i.debug,i.suggest=e.suggest,i.format=r.format,i},e.defaultBackend=e.defaultFormatter=null,e.pipe=function(t){return r.pipe(t)},e.end=e.unpipe=e.disable=function(t){return r.unpipe(t)},e.Transform=n,e.Filter=s,e.suggest=new s,e.enable=function(){return e.defaultFormatter?r.pipe(e.suggest).pipe(e.defaultFormatter).pipe(e.defaultBackend):r.pipe(e.suggest).pipe(e.defaultBackend)}},408(t,e,i){function n(){}i(173).mixin(n),n.prototype.write=function(t,e,i){this.emit("item",t,e,i)},n.prototype.end=function(){this.emit("end"),this.removeAllListeners()},n.prototype.pipe=function(t){var e=this;function i(){t.write.apply(t,Array.prototype.slice.call(arguments))}function n(){!t._isStdio&&t.end()}return e.emit("unpipe",t),t.emit("pipe",e),e.on("item",i),e.on("end",n),e.when("unpipe",function(s){var r=s===t||void 0===s;return r&&(e.removeListener("item",i),e.removeListener("end",n),t.emit("unpipe")),r}),t},n.prototype.unpipe=function(t){return this.emit("unpipe",t),this},n.prototype.format=function(t){throw new Error(["Warning: .format() is deprecated in Minilog v2! Use .pipe() instead. For example:","var Minilog = require('minilog');","Minilog","  .pipe(Minilog.backends.console.formatClean)","  .pipe(Minilog.backends.console);"].join("\n"))},n.mixin=function(t){var e,i=n.prototype;for(e in i)i.hasOwnProperty(e)&&(t.prototype[e]=i[e])},t.exports=n},692(t,e,i){var n=i(408),s=[],r=new n;r.write=function(t,e,i){s.push([t,e,i])},r.get=function(){return s},r.empty=function(){s=[]},t.exports=r},260(t,e,i){var n=i(408),s=/\n+$/,r=new n;r.write=function(t,e,i){var n=i.length-1;if("undefined"!=typeof console&&console.log){if(console.log.apply)return console.log.apply(console,[t,e].concat(i));if(JSON&&JSON.stringify){i[n]&&"string"==typeof i[n]&&(i[n]=i[n].replace(s,""));try{for(n=0;n<i.length;n++)i[n]=JSON.stringify(i[n])}catch(t){}console.log(i.join(" "))}}},r.formatters=["color","minilog"],r.color=i(638),r.minilog=i(658),t.exports=r},638(t,e,i){var n=i(408),s=i(193),r={debug:["cyan"],info:["purple"],warn:["yellow",!0],error:["red",!0]},o=new n;o.write=function(t,e,i){console.log,console[e]&&console[e].apply&&console[e].apply(console,["%c"+t+" %c"+e,s("gray"),s.apply(s,r[e])].concat(i))},o.pipe=function(){},t.exports=o},658(t,e,i){var n=i(408),s=i(193),r={debug:["gray"],info:["purple"],warn:["yellow",!0],error:["red",!0]},o=new n;o.write=function(t,e,i){var n=console.log;"debug"!=e&&console[e]&&(n=console[e]);var o=0;if("info"!=e){for(;o<i.length&&"string"==typeof i[o];o++);n.apply(console,["%c"+t+" "+i.slice(0,o).join(" "),s.apply(s,r[e])].concat(i.slice(o)))}else n.apply(console,["%c"+t,s.apply(s,r[e])].concat(i))},o.pipe=function(){},t.exports=o},193(t){var e={black:"#000",red:"#c23621",green:"#25bc26",yellow:"#bbbb00",blue:"#492ee1",magenta:"#d338d3",cyan:"#33bbc8",gray:"#808080",purple:"#708"};t.exports=function(t,i){return i?"color: #fff; background: "+e[t]+";":"color: "+e[t]+";"}},557(t,e,i){var n=i(15),s=n.enable,r=n.disable,o="undefined"!=typeof navigator&&/chrome/i.test(navigator.userAgent),a=i(260);if(n.defaultBackend=o?a.minilog:a,"undefined"!=typeof window){try{n.enable(JSON.parse(window.localStorage.minilogSettings))}catch(t){}if(window.location&&window.location.search){var u=RegExp("[?&]minilog=([^&]*)").exec(window.location.search);u&&n.enable(decodeURIComponent(u[1]))}}n.enable=function(){s.call(n,!0);try{window.localStorage.minilogSettings=JSON.stringify(!0)}catch(t){}return this},n.disable=function(){r.call(n);try{delete window.localStorage.minilogSettings}catch(t){}return this},(t.exports=n).backends={array:i(692),browser:n.defaultBackend,localStorage:i(113),jQuery:i(740)}},740(t,e,i){var n=i(408),s=(new Date).valueOf().toString(36);function r(t){this.url=t.url||"",this.cache=[],this.timer=null,this.interval=t.interval||3e4,this.enabled=!0,this.jQuery=window.jQuery,this.extras={}}n.mixin(r),r.prototype.write=function(t,e,i){this.timer||this.init(),this.cache.push([t,e].concat(i))},r.prototype.init=function(){if(this.enabled&&this.jQuery){var t=this;this.timer=setTimeout(function(){var e,i,n=[],r=t.url;if(0==t.cache.length)return t.init();for(e=0;e<t.cache.length;e++)try{JSON.stringify(t.cache[e]),n.push(t.cache[e])}catch(t){}t.jQuery.isEmptyObject(t.extras)?(i=JSON.stringify({logs:n}),r=t.url+"?client_id="+s):i=JSON.stringify(t.jQuery.extend({logs:n},t.extras)),t.jQuery.ajax(r,{type:"POST",cache:!1,processData:!1,data:i,contentType:"application/json",timeout:1e4}).success(function(e,i,n){e.interval&&(t.interval=Math.max(1e3,e.interval))}).error(function(){t.interval=3e4}).always(function(){t.init()}),t.cache=[]},this.interval)}},r.prototype.end=function(){},r.jQueryWait=function(t){if("undefined"!=typeof window&&(window.jQuery||window.$))return t(window.jQuery||window.$);"undefined"!=typeof window&&setTimeout(function(){r.jQueryWait(t)},200)},t.exports=r},113(t,e,i){var n=i(408),s=!1,r=new n;r.write=function(t,e,i){if("undefined"!=typeof window&&"undefined"!=typeof JSON&&JSON.stringify&&JSON.parse)try{s||(s=window.localStorage.minilog?JSON.parse(window.localStorage.minilog):[]),s.push([(new Date).toString(),t,e,i]),window.localStorage.minilog=JSON.stringify(s)}catch(t){}},t.exports=r},81(t,e,i){const n=i(708),s=i(625),r=[7,8,9,10,11,12,13,14,16,17,19,21,23,25,28,31,34,37,41,45,50,55,60,66,73,80,88,97,107,118,130,143,157,173,190,209,230,253,279,307,337,371,408,449,494,544,598,658,724,796,876,963,1060,1166,1282,1411,1552,1707,1878,2066,2272,2499,2749,3024,3327,3660,4026,4428,4871,5358,5894,6484,7132,7845,8630,9493,10442,11487,12635,13899,15289,16818,18500,20350,22385,24623,27086,29794,32767],o=[-1,-1,-1,-1,2,4,6,8,-1,-1,-1,-1,2,4,6,8];let a=null;t.exports=class{constructor(t){this.audioContext=t}static get STEP_TABLE(){return r}static get INDEX_TABLE(){return o}decode(t){return new Promise((e,i)=>{const r=new n(t);"RIFF"!==r.readUint8String(4)&&(s.warn("incorrect adpcm wav header"),i(new Error("incorrect adpcm wav header")));const o=r.readInt32();o+8!==t.byteLength&&s.warn(`adpcm wav length in header: ${o} is incorrect`),"WAVE"!==r.readUint8String(4)&&(s.warn("incorrect adpcm wav header"),i(new Error("incorrect adpcm wav header")));const a=this.extractChunk("fmt ",r);this.encoding=a.readUint16(),this.channels=a.readUint16(),this.samplesPerSecond=a.readUint32(),this.bytesPerSecond=a.readUint32(),this.blockAlignment=a.readUint16(),this.bitsPerSample=a.readUint16(),a.position+=2,this.samplesPerBlock=a.readUint16(),this.adpcmBlockSize=(this.samplesPerBlock-1)/2+4;const u=this.extractChunk("data",r),h=this.numberOfSamples(u,this.adpcmBlockSize),c=this.audioContext.createBuffer(1,h,this.samplesPerSecond);this.imaDecompress(u,this.adpcmBlockSize,c.getChannelData(0)),e(c)})}extractChunk(t,e){for(e.position=12;e.position<e.getLength()-8;){const i=e.readUint8String(4),n=e.readInt32();if(i===t)return e.extract(n);e.position+=n}}numberOfSamples(t,e){if(!t)return 0;t.position=0;const i=t.getBytesAvailable();return 2*(e-4)*(i/e|0)+1+2*Math.max(i%e-4,0)+Math.min(i%e,1)}imaDecompress(t,e,i){let n,s,u,h=0,c=-1;if(!t)return;t.position=0;const l=i.length,d=2*(e-4),f=function(){if(null===a){const t=r.length,e=o.length;a=new Array(t*e).fill(0);let i=0;for(let n=0;n<t;n++)for(let t=0;t<e;t++){const e=r[n];let s=0;4&t&&(s+=e),2&t&&(s+=e>>1),1&t&&(s+=e>>2),s+=e>>3,a[i++]=8&t?-s:s}}return a}();let p=0;for(;p<l;){n=t.readInt16(),h=t.readUint8(),t.position++,h>88&&(h=88),i[p++]=n/32768;const e=Math.min(d,l-p),r=p;for(;p-r<e;)c=t.readUint8(),s=15&c,u=f[16*h+s],h+=o[s],h>88?h=88:h<0&&(h=0),n+=u,n>32767?n=32767:n<-32768&&(n=-32768),i[p++]=n/32768,s=c>>4&15,u=f[16*h+s],h+=o[s],h>88?h=88:h<0&&(h=0),n+=u,n>32767?n=32767:n<-32768&&(n=-32768),i[p++]=n/32768}}}},708(t){class e{constructor(t,e=0,i=t.byteLength,{_uint8View:n=new Uint8Array(t)}={}){this.arrayBuffer=t,this.start=e,this.end=i,this._uint8View=n,this._position=e}extract(t){return new e(this.arrayBuffer,this._position,this._position+t,this)}getLength(){return this.end-this.start}getBytesAvailable(){return this.end-this._position}get position(){return this._position-this.start}set position(t){this._position=t+this.start}readUint8(){const t=this._uint8View[this._position];return this._position+=1,t}readUint8String(t){const e=this._uint8View;let i="";const n=this._position+t;for(let t=this._position;t<n;t++)i+=String.fromCharCode(e[t]);return this._position+=t,i}readInt16(){const t=new Int16Array(this.arrayBuffer,this._position,1)[0];return this._position+=2,t}readUint16(){const t=new Uint16Array(this.arrayBuffer,this._position,1)[0];return this._position+=2,t}readInt32(){let t;return t=this._position%4==0?new Int32Array(this.arrayBuffer,this._position,1)[0]:new Int32Array(this.arrayBuffer.slice(this._position,this._position+4))[0],this._position+=4,t}readUint32(){const t=new Uint32Array(this.arrayBuffer,this._position,1)[0];return this._position+=4,t}}t.exports=e},643(t,e,i){const n=i(678),s=i(571),r=i(625),o=i(721),a=i(81),u=i(964),h=i(205),c=i(948),l=i(184),d=i(105),f=i(367),p=i(402);t.exports=class{constructor(t=new s){this.audioContext=t,n(this.audioContext),this.inputNode=this.audioContext.createGain(),this.inputNode.connect(this.audioContext.destination),this.audioBuffers={},this.loudness=null,this.effects=[l,d,f]}get currentTime(){return this.audioContext.currentTime}get EFFECT_NAMES(){return{pitch:"pitch",pan:"pan"}}get DECAY_DURATION(){return.025}get DECAY_WAIT(){return.05}getInputNode(){return this.inputNode}_decodeSound(t){const e=t.data.buffer.slice(0),i=o();var n,s;return(n=this.audioContext,s=e,1===n.decodeAudioData.length?n.decodeAudioData(s):new Promise((t,e)=>{n.decodeAudioData(s,e=>t(e),t=>e(t))})).catch(()=>{if(0===t.data.length)return this._emptySound();const e=t.data.buffer.slice(0);return new a(this.audioContext).decode(e).catch(()=>this._emptySound())}).then(t=>[i,t],t=>{r.warn("audio data could not be decoded",t)})}_emptySound(){return this.audioContext.createBuffer(1,1,this.audioContext.sampleRate)}decodeSound(t){return this._decodeSound(t).then(([t,e])=>(this.audioBuffers[t]=e,t))}decodeSoundPlayer(t){return this._decodeSound(t).then(([t,e])=>new h(this,{id:t,buffer:e}))}getLoudness(){return this.loudness||(this.loudness=new u(this.audioContext)),this.loudness.getLoudness()}createEffectChain(){const t=new c(this,this.effects);return t.connect(this),t}createBank(){return new p(this,this.createEffectChain())}}},964(t,e,i){const n=i(625);t.exports=class{constructor(t){this.audioContext=t,this.connectingToMic=!1,this.mic=null}getLoudness(){if(this.mic||this.connectingToMic||(this.connectingToMic=!0,navigator.mediaDevices.getUserMedia({audio:!0}).then(t=>{this.audioStream=t,this.mic=this.audioContext.createMediaStreamSource(t),this.analyser=this.audioContext.createAnalyser(),this.mic.connect(this.analyser),this.micDataArray=new Float32Array(this.analyser.fftSize)}).catch(t=>{n.warn(t)})),this.mic&&this.audioStream.active){this.analyser.getFloatTimeDomainData(this.micDataArray);let t=0;for(let e=0;e<this.micDataArray.length;e++)t+=Math.pow(this.micDataArray[e],2);let e=Math.sqrt(t/this.micDataArray.length);return this._lastValue&&(e=Math.max(e,.6*this._lastValue)),this._lastValue=e,e*=1.63,e=Math.sqrt(e),e=Math.round(100*e),e=Math.min(e,100),e}return-1}}},402(t,e,i){const n=i(625);t.exports=class{constructor(t,e){this.audioEngine=t,this.soundPlayers={},this.playerTargets=new Map,this.soundEffects=new Map,this.effectChainPrime=e}addSoundPlayer(t){this.soundPlayers[t.id]=t}getSoundPlayer(t){return this.soundPlayers[t]||n.error(`SoundBank.getSoundPlayer(${t}): called missing sound in bank`),this.soundPlayers[t]}getSoundEffects(t){return this.soundEffects.has(t)||this.soundEffects.set(t,this.effectChainPrime.clone()),this.soundEffects.get(t)}playSound(t,e){const i=this.getSoundEffects(e),n=this.getSoundPlayer(e);return this.playerTargets.get(e)!==t&&n.stop(),this.playerTargets.set(e,t),i.addSoundPlayer(n),i.setEffectsFromTarget(t),n.connect(i),n.play(),n.finished()}setEffects(t){this.playerTargets.forEach((e,i)=>{e===t&&this.getSoundEffects(i).setEffectsFromTarget(t)})}stop(t,e){this.playerTargets.get(e)===t&&this.soundPlayers[e].stop()}stopAllSounds(t="*"){this.playerTargets.forEach((e,i)=>{"*"!==t&&e!==t||this.getSoundPlayer(i).stop()})}dispose(){this.playerTargets.clear(),this.soundEffects.forEach(t=>t.dispose()),this.soundEffects.clear();for(const t in this.soundPlayers)Object.prototype.hasOwnProperty.call(this.soundPlayers,t)&&this.soundPlayers[t].dispose();this.soundPlayers={}}}},205(t,e,i){const{EventEmitter:n}=i(7),s=i(367),r="ended";class o extends n{constructor(t,{id:e,buffer:i}){super(),this.id=e,this.audioEngine=t,this.buffer=i,this.outputNode=null,this.volumeEffect=null,this.target=null,this.initialized=!1,this.isPlaying=!1,this.startingUntil=0,this.playbackRate=1,this.handleEvent=this.handleEvent.bind(this)}get isStarting(){return this.isPlaying&&this.startingUntil>this.audioEngine.currentTime}handleEvent(t){t.type===r&&this.onEnded()}onEnded(){this.emit("stop"),this.isPlaying=!1}_createSource(){null!==this.outputNode&&(this.outputNode.removeEventListener(r,this.handleEvent),this.outputNode.disconnect()),this.outputNode=this.audioEngine.audioContext.createBufferSource(),this.outputNode.playbackRate.value=this.playbackRate,this.outputNode.buffer=this.buffer,this.outputNode.addEventListener(r,this.handleEvent),null!==this.target&&this.connect(this.target)}initialize(){this.initialized=!0,this._createSource()}connect(t){return t===this.volumeEffect?(this.outputNode.disconnect(),void this.outputNode.connect(this.volumeEffect.getInputNode())):(this.target=t,this.initialized?(null===this.volumeEffect?(this.outputNode.disconnect(),this.outputNode.connect(t.getInputNode())):this.volumeEffect.connect(t),this):void 0)}dispose(){this.initialized&&(this.stopImmediately(),null!==this.volumeEffect&&(this.volumeEffect.dispose(),this.volumeEffect=null),this.outputNode.disconnect(),this.outputNode=null,this.target=null,this.initialized=!1)}take(){this.outputNode&&this.outputNode.removeEventListener(r,this.handleEvent);const t=new o(this.audioEngine,this);return t.playbackRate=this.playbackRate,this.isPlaying&&(t.startingUntil=this.startingUntil,t.isPlaying=this.isPlaying,t.initialized=this.initialized,t.outputNode=this.outputNode,t.outputNode.addEventListener(r,t.handleEvent),t.volumeEffect=this.volumeEffect,t.volumeEffect&&(t.volumeEffect.audioPlayer=t),null!==this.target&&t.connect(this.target),this.emit("stop"),t.emit("play")),this.outputNode=null,this.volumeEffect=null,this.initialized=!1,this.startingUntil=0,this.isPlaying=!1,t}play(){if(this.isStarting)return this.emit("stop"),void this.emit("play");this.isPlaying&&this.stop(),this.initialized?this._createSource():this.initialize(),this.outputNode.start(),this.isPlaying=!0;const{currentTime:t,DECAY_DURATION:e}=this.audioEngine;this.startingUntil=t+e,this.emit("play")}stop(){if(!this.isPlaying)return;const t=this.take();t.volumeEffect=new s(t.audioEngine,t,null),t.volumeEffect.connect(t.target),t.finished().then(()=>t.dispose()),t.volumeEffect.set(0);const{currentTime:e,DECAY_DURATION:i}=this.audioEngine;t.outputNode.stop(e+i)}stopImmediately(){this.isPlaying&&(this.outputNode.stop(),this.isPlaying=!1,this.startingUntil=0,this.emit("stop"))}finished(){return new Promise(t=>{this.once("stop",t)})}setPlaybackRate(t){this.playbackRate=t,this.initialized&&(this.outputNode.playbackRate.value=t)}}t.exports=o},678(t,e,i){const n=i(412);t.exports=function(t){if("undefined"!=typeof document)return n(t)}},445(t){t.exports=class{constructor(t,e,i){this.audioEngine=t,this.audioPlayer=e,this.lastEffect=i,this.value=this.DEFAULT_VALUE,this.initialized=!1,this.inputNode=null,this.outputNode=null,this.target=null}get name(){throw new Error(`${this.constructor.name}.name is not implemented`)}get DEFAULT_VALUE(){return 0}get _isPatch(){return this.initialized&&(this.value!==this.DEFAULT_VALUE||null===this.audioPlayer)}getInputNode(){return this._isPatch?this.inputNode:this.target.getInputNode()}initialize(){throw new Error(`${this.constructor.name}.initialize is not implemented.`)}_set(){throw new Error(`${this.constructor.name}._set is not implemented.`)}set(t){this.initialized||this.initialize();const e=this._isPatch;e&&(this._lastPatch=this.audioEngine.currentTime),this._set(t),this._isPatch!==e&&null!==this.target&&this.connect(this.target)}update(){}clear(){this.set(this.DEFAULT_VALUE)}connect(t){if(null===t)throw new Error("target may not be null");const e=t=>{if(t)return t===this||e(t.target)};if(e(t))throw new Error("Effect cannot connect to itself");this.target=t,null!==this.outputNode&&this.outputNode.disconnect(),(this._isPatch||this._lastPatch+this.audioEngine.DECAY_DURATION<this.audioEngine.currentTime)&&this.outputNode.connect(t.getInputNode()),null===this.lastEffect?null!==this.audioPlayer&&this.audioPlayer.connect(this):this.lastEffect.connect(this)}dispose(){this.inputNode=null,this.outputNode=null,this.target=null,this.initialized=!1}}},948(t){class e{constructor(t,e){this.audioEngine=t,this.inputNode=this.audioEngine.audioContext.createGain(),this.effects=e;let i=null;this._effects=e.reverse().map(e=>{const n=new e(t,this,i);return this[n.name]=n,i=n,n}).reverse(),this.firstEffect=this._effects[0],this.lastEffect=this._effects[this._effects.length-1],this._soundPlayers=new Set}clone(){const t=new e(this.audioEngine,this.effects);return this.target&&t.connect(this.target),t}addSoundPlayer(t){this._soundPlayers.has(t)||(this._soundPlayers.add(t),this.update())}removeSoundPlayer(t){this._soundPlayers.remove(t)}getInputNode(){return this.inputNode}connect(t){const{firstEffect:e,lastEffect:i}=this;if(t===i)return this.inputNode.disconnect(),void this.inputNode.connect(i.getInputNode());t!==e&&(this.target=t,e.connect(t))}getSoundPlayers(){return[...this._soundPlayers]}setEffectsFromTarget(t){this._effects.forEach(e=>{"soundEffects"in t&&e.name in t.soundEffects?e.set(t.soundEffects[e.name]):e.name in t&&e.set(t[e.name])})}set(t,e){t in this&&this[t].set(e)}update(){this._effects.forEach(t=>t.update())}clear(){this._effects.forEach(t=>t.clear())}dispose(){this._soundPlayers=null,this._effects.forEach(t=>t.dispose()),this._effects=null}}t.exports=e},184(t,e,i){const n=i(445);t.exports=class extends n{constructor(t,e,i){super(t,e,i),this.leftGain=null,this.rightGain=null,this.channelMerger=null}get name(){return"pan"}initialize(){const t=this.audioEngine.audioContext;this.inputNode=t.createGain(),this.leftGain=t.createGain(),this.rightGain=t.createGain(),this.channelMerger=t.createChannelMerger(2),this.outputNode=this.channelMerger,this.inputNode.connect(this.leftGain),this.inputNode.connect(this.rightGain),this.leftGain.connect(this.channelMerger,0,0),this.rightGain.connect(this.channelMerger,0,1),this.initialized=!0}_set(t){this.value=t;const e=(t+100)/200,i=Math.cos(e*Math.PI/2),n=Math.sin(e*Math.PI/2),{currentTime:s,DECAY_WAIT:r,DECAY_DURATION:o}=this.audioEngine;this.leftGain.gain.setTargetAtTime(i,s+r,o),this.rightGain.gain.setTargetAtTime(n,s+r,o)}dispose(){this.initialized&&(this.inputNode.disconnect(),this.leftGain.disconnect(),this.rightGain.disconnect(),this.channelMerger.disconnect(),this.inputNode=null,this.leftGain=null,this.rightGain=null,this.channelMerger=null,this.outputNode=null,this.target=null,this.initialized=!1)}}},105(t,e,i){const n=i(445);t.exports=class extends n{constructor(t,e,i){super(t,e,i),this.ratio=1}get name(){return"pitch"}get _isPatch(){return!1}getInputNode(){return this.target.getInputNode()}initialize(){this.initialized=!0}_set(t){this.value=t,this.ratio=this.getRatio(this.value),this.updatePlayers(this.audioPlayer.getSoundPlayers())}update(){this.updatePlayers(this.audioPlayer.getSoundPlayers())}getRatio(t){const e=t/10;return Math.pow(2,e/12)}updatePlayer(t){t.setPlaybackRate(this.ratio)}updatePlayers(t){if(t)for(const e in t)Object.prototype.hasOwnProperty.call(t,e)&&this.updatePlayer(t[e])}}},367(t,e,i){const n=i(445);t.exports=class extends n{get DEFAULT_VALUE(){return 100}get name(){return"volume"}initialize(){this.inputNode=this.audioEngine.audioContext.createGain(),this.outputNode=this.inputNode,this.initialized=!0}_set(t){this.value=t;const{gain:e}=this.outputNode,{currentTime:i,DECAY_DURATION:n}=this.audioEngine;e.linearRampToValueAtTime(t/100,i+n)}dispose(){this.initialized&&(this.outputNode.disconnect(),this.inputNode=null,this.outputNode=null,this.target=null,this.initialized=!1)}}},31(t,e,i){const n=i(643);t.exports=n},625(t,e,i){const n=i(557);n.enable(),t.exports=n("scratch-audioengine")},721(t){const e="!#%()*+,-./:;=?@[]^_`{|}~ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";t.exports=function(){const t=[];for(let i=0;i<20;i++)t[i]=e.charAt(87*Math.random());return t.join("")}},412(t,e){var i,n;void 0===(n="function"==typeof(i=function(){var t=function(t,e){this._dragged=!1,this._element=t,this._bindedMove=this._moved.bind(this),this._bindedEnd=this._ended.bind(this,e),t.addEventListener("touchstart",this._bindedEnd),t.addEventListener("touchmove",this._bindedMove),t.addEventListener("touchend",this._bindedEnd),t.addEventListener("mouseup",this._bindedEnd)};function e(t){return"running"===t.state}function i(e,n,s){if(Array.isArray(e)||NodeList&&e instanceof NodeList)for(var r=0;r<e.length;r++)i(e[r],n,s);else if("string"==typeof e)i(document.querySelectorAll(e),n,s);else if(e.jquery&&"function"==typeof e.toArray)i(e.toArray(),n,s);else if(Element&&e instanceof Element){var o=new t(e,s);n.push(o)}}return t.prototype._moved=function(t){this._dragged=!0},t.prototype._ended=function(t){this._dragged||function(t){var e=t.createBuffer(1,1,t.sampleRate),i=t.createBufferSource();i.buffer=e,i.connect(t.destination),i.start(0),t.resume&&t.resume()}(t),this._dragged=!1},t.prototype.dispose=function(){this._element.removeEventListener("touchstart",this._bindedEnd),this._element.removeEventListener("touchmove",this._bindedMove),this._element.removeEventListener("touchend",this._bindedEnd),this._element.removeEventListener("mouseup",this._bindedEnd),this._bindedMove=null,this._bindedEnd=null,this._element=null},function(t,n,s){var r=new Promise(function(i){!function(t,i){e(t)?i():function n(){e(t)?i():(requestAnimationFrame(n),t.resume&&t.resume())}()}(t,i)}),o=[];return n||(n=document.body),i(n,o,t),r.then(function(){for(var t=0;t<o.length;t++)o[t].dispose();o=null,s&&s()}),r}})?i.apply(e,[]):i)||(t.exports=n)}},e={};const i=function i(n){var s=e[n];if(void 0!==s)return s.exports;var r=e[n]={exports:{}};return t[n].call(r.exports,r,r.exports,i),r.exports}(31);window.ScratchAudio=i})();
     </script>
-
+ 
     <!-- Polyfills & Environment Setup -->
     <script>
         window.global = window;
         window.process = { env: { NODE_ENV: 'production' } };
         window.Buffer = window.Buffer || { isBuffer: () => false };
     </script>
-
+ 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Orbitron:wght@400;900&family=Rajdhani:wght@300;500;700&display=swap');
-
+ 
         html, body {
             margin: 0;
             padding: 0;
@@ -190,7 +215,7 @@
             background-repeat: no-repeat;
             color: #fff;
         }
-
+ 
         body::before {
             content: "";
             position: absolute;
@@ -201,7 +226,7 @@
             background: radial-gradient(circle at center, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.8) 100%);
             z-index: -1;
         }
-
+ 
         #main-layout {
             display: grid;
             grid-template-columns: 1fr 320px;
@@ -214,7 +239,7 @@
             z-index: 1;
             align-items: start; /* 上寄せに配置 */
         }
-
+ 
         #player-section {
             display: flex;
             flex-direction: column;
@@ -222,14 +247,14 @@
             justify-content: flex-start;
             padding-top: 5px; /* 上部からの距離をさらに短縮 */
         }
-
+ 
         .title-container {
             display: flex;
             flex-direction: column;
             align-items: center;
             margin-bottom: 8px; /* 余白をさらに縮小 */
         }
-
+ 
         .scratch-logo {
             font-family: 'Orbitron', sans-serif;
             font-size: 1.1rem;
@@ -239,7 +264,7 @@
             text-shadow: 0 0 10px rgba(255, 171, 25, 0.5);
             margin-bottom: -6px;
         }
-
+ 
         .mod-title {
             font-family: 'Cinzel Decorative', serif;
             font-size: 2.8rem; /* 少しサイズ調整 */
@@ -248,7 +273,7 @@
             letter-spacing: 0.1em;
             text-shadow: 0 0 10px rgba(0, 212, 255, 0.8), 0 0 30px rgba(0, 212, 255, 0.4);
         }
-
+ 
         #canvas-container {
             width: 480px;
             height: 360px;
@@ -257,13 +282,13 @@
             position: relative;
             box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
         }
-
+ 
         #stage-canvas {
             width: 100%;
             height: 100%;
             display: block;
         }
-
+ 
         .scratch-bar {
             display: flex;
             align-items: center;
@@ -275,7 +300,7 @@
             width: 480px;
             box-shadow: 0 -5px 15px rgba(0, 212, 255, 0.2);
         }
-
+ 
         .controls-panel {
             background: rgba(10, 10, 20, 0.9);
             padding: 10px 16px; /* 縦パディングを縮小 */
@@ -284,7 +309,7 @@
             border-top: none;
             box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
         }
-
+ 
         #guide-section {
             background: rgba(0, 20, 40, 0.8);
             backdrop-filter: blur(15px);
@@ -296,7 +321,7 @@
             max-height: 90vh; /* ガイドの高さ制限を調整 */
             box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
         }
-
+ 
         .guide-h2 {
             font-family: 'Orbitron', sans-serif;
             font-size: 1.1rem;
@@ -308,24 +333,24 @@
             align-items: center;
             gap: 8px;
         }
-
+ 
         .guide-item {
             margin-bottom: 15px;
         }
-
+ 
         .guide-item h3 {
             font-weight: bold;
             color: #fff;
             font-size: 0.9rem;
             margin-bottom: 3px;
         }
-
+ 
         .guide-item p {
             font-size: 0.8rem;
             color: #ccc;
             line-height: 1.4;
         }
-
+ 
         .status-light {
             width: 8px;
             height: 8px;
@@ -335,7 +360,7 @@
             display: inline-block;
             margin-right: 8px;
         }
-
+ 
         .icon-btn {
             transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             background: transparent;
@@ -346,11 +371,11 @@
             align-items: center;
             justify-content: center;
         }
-
+ 
         .icon-btn:hover {
             transform: scale(1.2) rotate(5deg);
         }
-
+ 
         input[type="range"] {
             -webkit-appearance: none;
             background: #1a1a2e;
@@ -358,7 +383,7 @@
             border-radius: 2px;
             cursor: pointer;
         }
-
+ 
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
             width: 16px;
@@ -368,7 +393,7 @@
             box-shadow: 0 0 10px #00d4ff;
             cursor: pointer;
         }
-
+ 
         #guide-section::-webkit-scrollbar {
             width: 4px;
         }
@@ -389,7 +414,7 @@
     </style>
 </head>
 <body class="flex items-center justify-center">
-
+ 
     <div id="main-layout">
         <!-- PLAYER SECTION -->
         <section id="player-section">
@@ -397,7 +422,7 @@
                 <div class="scratch-logo">SCRATCH</div>
                 <h1 class="mod-title">Night-Mod</h1>
             </div>
-
+ 
             <div class="scratch-bar">
                 <button id="green-flag" class="icon-btn" title="Start">
                     <svg width="28" height="28" viewBox="0 0 32 32">
@@ -414,11 +439,11 @@
                     <span id="status-bar" class="text-[10px] tracking-[0.2em] font-bold text-[#00d4ff]">CONNECTING...</span>
                 </div>
             </div>
-
+ 
             <div id="canvas-container">
                 <canvas id="stage-canvas" width="480" height="360"></canvas>
             </div>
-
+ 
             <div class="controls-panel">
                 <input type="file" id="file-input" accept=".sb3" 
                     class="block w-full text-xs text-blue-300 mb-3 file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-[#00d4ff] file:text-black hover:file:opacity-80 cursor-pointer"/>
@@ -434,51 +459,51 @@
                 </div>
             </div>
         </section>
-
+ 
         <!-- GUIDE SECTION (維持) -->
         <aside id="guide-section">
             <h2 class="guide-h2">
                 <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
                 USER GUIDE
             </h2>
-
+ 
             <div class="guide-item">
                 <h3>01. プロジェクトの読込</h3>
                 <p>下の「Choose File」ボタンから、あなたのパソコンにある .sb3 ファイルを選択してください。</p>
             </div>
-
+ 
             <div class="guide-item">
                 <h3>02. 実行と停止</h3>
                 <p>緑の旗ボタンで実行、赤いボタンでプロジェクトを強制停止します。</p>
             </div>
-
+ 
             <div class="guide-item">
                 <h3>03. オーバークロック</h3>
                 <p>スライダーを動かすことで、最大120FPSまで実行速度を加速させることができます。厳密なデルタタイム制御を行います。</p>
             </div>
-
+ 
             <div class="guide-item">
                 <h3>04. キー操作</h3>
                 <p>スペースキーや矢印キーの入力に対応しています。</p>
             </div>
-
+ 
             <div class="mt-8 pt-6 border-t border-white/10 text-[10px] text-gray-400">
                 <p>Produced by eakonn705 & Gemini</p>
                 <p>Environment: Production</p>
             </div>
         </aside>
     </div>
-
+ 
     <script>
         window.addEventListener('keydown', (e) => {
             if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code) && e.target === document.body) {
                 e.preventDefault();
             }
         }, false);
-
+ 
         let retryCount = 0;
         const maxRetries = 30;
-
+ 
         const getConstructor = (lib) => {
             if (typeof lib === 'function') return lib;
             if (lib && typeof lib.default === 'function') return lib.default;
@@ -490,7 +515,7 @@
             }
             return null;
         };
-
+ 
         const initScratchPlayer = () => {
             const canvas = document.getElementById('stage-canvas');
             const fileInput = document.getElementById('file-input');
@@ -499,11 +524,11 @@
             const statusBar = document.getElementById('status-bar');
             const fpsSlider = document.getElementById('fps-slider');
             const fpsValueDisplay = document.getElementById('fps-value');
-
+ 
             const ActualVM = getConstructor(window.VirtualMachine);
             const ActualRenderer = getConstructor(window.ScratchRender);
             const ActualStorage = getConstructor(window.ScratchStorage);
-
+ 
             if (!ActualVM || !ActualRenderer || !ActualStorage) {
                 if (retryCount < maxRetries) {
                     retryCount++;
@@ -514,16 +539,16 @@
                 statusBar.textContent = "FAILURE";
                 return;
             }
-
+ 
             statusBar.textContent = "CORE ACTIVE";
-
+ 
             try {
                 const vm = new ActualVM();
                 const renderer = new ActualRenderer(canvas);
                 const storage = new ActualStorage();
-
+ 
                 vm.attachRenderer(renderer);
-
+ 
                 // storage に Scratch CDN のアセット取得先を登録
                 // これがないとローカルsb3内のアセット（画像・音声）を読み込めない
                 const AssetType = storage.AssetType;
@@ -532,9 +557,16 @@
                     [AssetType.ImageVector, AssetType.ImageBitmap, AssetType.Sound],
                     (asset) => `https://assets.scratch.mit.edu/internalapi/asset/${asset.assetId}.${asset.dataFormat}/get/`
                 );
-
+ 
                 vm.attachStorage(storage);
-
+ 
+                // ★翻訳パッチ補強: attachStorage() の内部で fetchWithTimeout の myFetch が
+                // scratch-storage の scratchFetch に差し替えられる。
+                // scratchFetch は () => fetch(resource) を呼ぶアロー関数であり、
+                // 実行時に window.fetch（パッチ済み）を参照するため追加対処は不要。
+                // ただし scratchFetch が Request オブジェクトをラップして渡すため、
+                // 翻訳パッチの isTranslateURL / parseTranslateParams が Request に対応していることを確認済み。
+ 
                 // ★修正1: AudioEngine をアタッチ（音が出ない問題を修正）
                 if (window.ScratchAudio) {
                     try {
@@ -544,19 +576,19 @@
                         console.warn('AudioEngine init failed:', e);
                     }
                 }
-
+ 
                 // ★修正2: vm.runtime.renderer を明示的に設定（変数・リスト表示の修正）
                 // vm.attachRenderer() は内部的に renderer を設定するが、
                 // 一部バージョンでは runtime.renderer が未設定のままになるため明示的に代入
                 if (!vm.runtime.renderer) {
                     vm.runtime.renderer = renderer;
                 }
-
+ 
                 // ★修正3: ゲームループの根本修正（操作不能・真っ黒画面の修正）
                 // vm.start() は setInterval で _step() を定期実行する（音・変数更新・スクリプト実行に必要）
                 // カスタムループは「描画のみ」担当し、vm の内部ステッピングは vm.start() に任せる
                 // → requestAnimationFrame で renderer.draw() だけ呼ぶのが正しいアーキテクチャ
-
+ 
                 // FPS変更: vm.start() の直後に _steppingInterval を強制置換する方式
                 // ※ start() 前は _steppingInterval が存在しないため、start() 後に適用する
                 const applyFPS = (fps) => {
@@ -569,17 +601,17 @@
                     }, 1000 / fps);
                     vm.runtime.currentStepTime = 1000 / fps;
                 };
-
+ 
                 fpsSlider.addEventListener('input', (e) => {
                     applyFPS(parseInt(e.target.value));
                 });
-
+ 
                 // 描画ループ：renderer.draw() のみ担当（vm._step は vm.start() が管理）
                 const renderLoop = () => {
                     renderer.draw();
                     requestAnimationFrame(renderLoop);
                 };
-
+ 
                 // マウス・キーボード入力
                 const getMousePos = (e) => {
                     const rect = canvas.getBoundingClientRect();
@@ -588,7 +620,7 @@
                         y: 180 - (e.clientY - rect.top) / rect.height * 360
                     };
                 };
-
+ 
                 canvas.addEventListener('mousemove', (e) => {
                     const pos = getMousePos(e);
                     vm.postIOData('mouse', { x: pos.x, y: pos.y, isDown: undefined });
@@ -609,27 +641,27 @@
                     if (document.activeElement === document.getElementById('ask-input')) return;
                     vm.postIOData('keyboard', { key: e.key, isDown: false });
                 });
-
+ 
                 // ★修正4: モニター（変数・リスト表示）の描画修正
                 // MONITORS_UPDATE イベントを受け取り、カスタム DOM でモニターを描画する
                 const monitorContainer = document.createElement('div');
                 monitorContainer.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden;';
                 document.getElementById('canvas-container').appendChild(monitorContainer);
-
+ 
                 const monitorElements = {};
-
+ 
                 const getMonitorColor = (type) => {
                     if (type === 'list') return { bg: 'rgba(255,140,26,0.85)', border: '#ff8c1a' };
                     return { bg: 'rgba(255,140,26,0.85)', border: '#ff8c1a' };
                 };
-
+ 
                 vm.on('MONITORS_UPDATE', (monitors) => {
                     const visibleIds = new Set();
-
+ 
                     monitors.forEach((monitor, id) => {
                         if (!monitor.visible) return;
                         visibleIds.add(id);
-
+ 
                         let el = monitorElements[id];
                         if (!el) {
                             el = document.createElement('div');
@@ -637,14 +669,14 @@
                             monitorContainer.appendChild(el);
                             monitorElements[id] = el;
                         }
-
+ 
                         // monitor.x/y はステージ左上原点のピクセル座標（0〜480, 0〜360）
                         // そのままパーセントに変換する（中心座標変換は不要）
                         const mX = (monitor.x !== undefined && monitor.x !== null) ? monitor.x : 5;
                         const mY = (monitor.y !== undefined && monitor.y !== null) ? monitor.y : 5;
                         el.style.left = (mX / 480 * 100) + '%';
                         el.style.top  = (mY / 360 * 100) + '%';
-
+ 
                         if (monitor.mode === 'list') {
                             // リスト表示
                             const w = monitor.width || 100;
@@ -690,7 +722,7 @@
                             }
                         }
                     });
-
+ 
                     // 非表示になったモニターを削除
                     for (const id in monitorElements) {
                         if (!visibleIds.has(id)) {
@@ -699,8 +731,8 @@
                         }
                     }
                 });
-
-
+ 
+ 
                 // ★質問（ask）ブロックの実装
                 // QUESTION イベント: question文字列が来たらUIを表示、null が来たら非表示
                 const askContainer = document.createElement('div');
@@ -730,23 +762,23 @@
                     '</div>',
                 ].join('');
                 document.getElementById('canvas-container').appendChild(askContainer);
-
+ 
                 const askInput = document.getElementById('ask-input');
                 const askSubmit = document.getElementById('ask-submit');
                 const askQuestionText = document.getElementById('ask-question-text');
-
+ 
                 const submitAnswer = () => {
                     const answer = askInput.value;
                     vm.runtime.emit('ANSWER', answer);
                     askInput.value = '';
                     askContainer.style.display = 'none';
                 };
-
+ 
                 askSubmit.addEventListener('click', submitAnswer);
                 askInput.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') { e.preventDefault(); submitAnswer(); }
                 });
-
+ 
                 vm.runtime.on('QUESTION', (question) => {
                     // null のみ非表示（空文字はスプライトvisible時に来る正常なケース）
                     if (question === null || question === undefined) {
@@ -763,14 +795,14 @@
                         setTimeout(() => askInput.focus(), 50);
                     }
                 });
-
+ 
                 // VMを起動（内部の setInterval ステッピングが始まる）
                 vm.start();
                 // vm.start() 直後に初期FPSを強制適用（デフォルトは30fps固定）
                 applyFPS(parseInt(fpsSlider.value));
                 // 描画ループ開始
                 requestAnimationFrame(renderLoop);
-
+ 
                 // sb3 に含まれる extensions を loadProject 前にロードするヘルパー
                 // ★重要: JSZip.loadAsync() は ArrayBuffer を内部で detach する場合があるため、
                 //         必ず .slice(0) でコピーを作ってから渡す
@@ -801,7 +833,7 @@
                         console.warn('[NIGHT-MOD] Extension pre-load failed:', e);
                     }
                 };
-
+ 
                 fileInput.addEventListener('change', async (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
@@ -825,16 +857,16 @@
                     };
                     reader.readAsArrayBuffer(file);
                 });
-
+ 
                 greenFlagBtn.addEventListener('click', () => vm.greenFlag());
                 stopBtn.addEventListener('click', () => vm.stopAll());
-
+ 
             } catch (initErr) {
                 statusBar.textContent = "INIT ERROR: " + initErr.message;
                 console.error('[NIGHT-MOD initErr]', initErr);
             }
         };
-
+ 
         window.onload = initScratchPlayer;
     </script>
 </body>
