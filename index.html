@@ -445,9 +445,12 @@
                     vm.postIOData('mouse', { isDown: false });
                 });
                 window.addEventListener('keydown', (e) => {
+                    // 入力欄フォーカス中はVMにキーを渡さない
+                    if (document.activeElement === document.getElementById('ask-input')) return;
                     vm.postIOData('keyboard', { key: e.key, isDown: true });
                 });
                 window.addEventListener('keyup', (e) => {
+                    if (document.activeElement === document.getElementById('ask-input')) return;
                     vm.postIOData('keyboard', { key: e.key, isDown: false });
                 });
 
@@ -496,10 +499,10 @@
                             el.style.cssText += `width:${wPct}%;height:${hPct}%;`;
                             el.innerHTML = `
                                 <div style="background:rgba(220,110,0,0.9);color:#fff;padding:1px 4px;border-radius:3px 3px 0 0;font-size:10px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${(() => { if (monitor.params) { const pv = Object.values(monitor.params)[0]; if (pv) return pv; } return monitor.id || ""; })()} </div>
-                                <div style="background:rgba(255,255,255,0.92);color:#000;border:1px solid #ff8c1a;border-top:none;border-radius:0 0 3px 3px;height:calc(100% - 18px);overflow-y:auto;padding:2px;">
+                                <div style="background:#ffffff;color:#000;border:1px solid #ff8c1a;border-top:none;border-radius:0 0 3px 3px;height:calc(100% - 18px);overflow-y:auto;padding:2px;">
                                     ${items.map((v, i) => `<div style="display:flex;gap:4px;border-bottom:1px solid #eee;padding:1px 2px;"><span style="color:#aaa;min-width:14px;">${i+1}</span><span>${v}</span></div>`).join('')}
                                 </div>
-                                <div style="text-align:center;font-size:9px;color:#555;background:rgba(220,220,220,0.9);border:1px solid #ff8c1a;border-top:none;">${items.length} 個</div>
+                                <div style="text-align:center;font-size:9px;color:#555;background:#dcdcdc;border:1px solid #ff8c1a;border-top:none;">${items.length} 個</div>
                             `;
                         } else {
                             // 変数表示（normalまたはlarge-with-value）
@@ -538,6 +541,70 @@
                             monitorElements[id].remove();
                             delete monitorElements[id];
                         }
+                    }
+                });
+
+
+                // ★質問（ask）ブロックの実装
+                // QUESTION イベント: question文字列が来たらUIを表示、null が来たら非表示
+                const askContainer = document.createElement('div');
+                askContainer.id = 'ask-container';
+                askContainer.style.cssText = [
+                    'position:absolute',
+                    'bottom:0',
+                    'left:0',
+                    'width:100%',
+                    'box-sizing:border-box',
+                    'padding:6px 8px',
+                    'background:rgba(255,255,255,0.95)',
+                    'border-top:2px solid #aaa',
+                    'display:none',
+                    'flex-direction:column',
+                    'gap:4px',
+                    'z-index:20',
+                    'font-family:"Helvetica Neue",Helvetica,Arial,sans-serif',
+                ].join(';');
+                askContainer.innerHTML = [
+                    '<div id="ask-question-text" style="font-size:13px;color:#333;font-weight:bold;word-break:break-all;"></div>',
+                    '<div style="display:flex;gap:6px;align-items:center;">',
+                    '  <input id="ask-input" type="text" autocomplete="off" style="flex:1;border:2px solid #aaa;border-radius:20px;padding:4px 12px;font-size:13px;outline:none;color:#333;background:#fff;caret-color:#333;"/>',
+                    '  <button id="ask-submit" style="width:32px;height:32px;background:#5cb1d6;border:none;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">',
+                    '    <svg width="14" height="14" viewBox="0 0 16 16" fill="white"><path d="M2 8l12-6-5 6 5 6z"/></svg>',
+                    '  </button>',
+                    '</div>',
+                ].join('');
+                document.getElementById('canvas-container').appendChild(askContainer);
+
+                const askInput = document.getElementById('ask-input');
+                const askSubmit = document.getElementById('ask-submit');
+                const askQuestionText = document.getElementById('ask-question-text');
+
+                const submitAnswer = () => {
+                    const answer = askInput.value;
+                    vm.runtime.emit('ANSWER', answer);
+                    askInput.value = '';
+                    askContainer.style.display = 'none';
+                };
+
+                askSubmit.addEventListener('click', submitAnswer);
+                askInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); submitAnswer(); }
+                });
+
+                vm.runtime.on('QUESTION', (question) => {
+                    // null のみ非表示（空文字はスプライトvisible時に来る正常なケース）
+                    if (question === null || question === undefined) {
+                        askContainer.style.display = 'none';
+                    } else {
+                        // 空文字の場合は質問テキストを隠す（スプライト吹き出しに表示される）
+                        if (question === '') {
+                            askQuestionText.style.display = 'none';
+                        } else {
+                            askQuestionText.textContent = question;
+                            askQuestionText.style.display = 'block';
+                        }
+                        askContainer.style.display = 'flex';
+                        setTimeout(() => askInput.focus(), 50);
                     }
                 });
 
