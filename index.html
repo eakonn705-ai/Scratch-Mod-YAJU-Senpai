@@ -401,21 +401,21 @@
                 // カスタムループは「描画のみ」担当し、vm の内部ステッピングは vm.start() に任せる
                 // → requestAnimationFrame で renderer.draw() だけ呼ぶのが正しいアーキテクチャ
 
-                // FPS変更：vm.runtime の内部タイマー間隔を変更することで実現
-                const updateFPS = (fps) => {
+                // FPS変更: vm.start() の直後に _steppingInterval を強制置換する方式
+                // ※ start() 前は _steppingInterval が存在しないため、start() 後に適用する
+                const applyFPS = (fps) => {
                     fpsValueDisplay.textContent = fps;
-                    // Runtime の内部ステッピング間隔を変更
                     if (vm.runtime._steppingInterval) {
                         clearInterval(vm.runtime._steppingInterval);
-                        vm.runtime._steppingInterval = setInterval(() => {
-                            vm.runtime._step();
-                        }, 1000 / fps);
-                        vm.runtime.currentStepTime = 1000 / fps;
                     }
+                    vm.runtime._steppingInterval = setInterval(() => {
+                        vm.runtime._step();
+                    }, 1000 / fps);
+                    vm.runtime.currentStepTime = 1000 / fps;
                 };
 
                 fpsSlider.addEventListener('input', (e) => {
-                    updateFPS(parseInt(e.target.value));
+                    applyFPS(parseInt(e.target.value));
                 });
 
                 // 描画ループ：renderer.draw() のみ担当（vm._step は vm.start() が管理）
@@ -451,8 +451,100 @@
                     vm.postIOData('keyboard', { key: e.key, isDown: false });
                 });
 
+                // ★修正4: モニター（変数・リスト表示）の描画修正
+                // MONITORS_UPDATE イベントを受け取り、カスタム DOM でモニターを描画する
+                const monitorContainer = document.createElement('div');
+                monitorContainer.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden;';
+                document.getElementById('canvas-container').appendChild(monitorContainer);
+
+                const monitorElements = {};
+
+                const getMonitorColor = (type) => {
+                    if (type === 'list') return { bg: 'rgba(255,140,26,0.85)', border: '#ff8c1a' };
+                    return { bg: 'rgba(255,140,26,0.85)', border: '#ff8c1a' };
+                };
+
+                vm.on('MONITORS_UPDATE', (monitors) => {
+                    const visibleIds = new Set();
+
+                    monitors.forEach((monitor, id) => {
+                        if (!monitor.visible) return;
+                        visibleIds.add(id);
+
+                        let el = monitorElements[id];
+                        if (!el) {
+                            el = document.createElement('div');
+                            el.style.cssText = 'position:absolute;font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:11px;font-weight:bold;pointer-events:none;z-index:10;';
+                            monitorContainer.appendChild(el);
+                            monitorElements[id] = el;
+                        }
+
+                        // monitor.x/y はステージ左上原点のピクセル座標（0〜480, 0〜360）
+                        // そのままパーセントに変換する（中心座標変換は不要）
+                        const mX = (monitor.x !== undefined && monitor.x !== null) ? monitor.x : 5;
+                        const mY = (monitor.y !== undefined && monitor.y !== null) ? monitor.y : 5;
+                        el.style.left = (mX / 480 * 100) + '%';
+                        el.style.top  = (mY / 360 * 100) + '%';
+
+                        if (monitor.mode === 'list') {
+                            // リスト表示
+                            const w = monitor.width || 100;
+                            const h = monitor.height || 200;
+                            const wPct = w / 480 * 100;
+                            const hPct = h / 360 * 100;
+                            const items = monitor.value || [];
+                            el.style.cssText += `width:${wPct}%;height:${hPct}%;`;
+                            el.innerHTML = `
+                                <div style="background:rgba(220,110,0,0.9);color:#fff;padding:1px 4px;border-radius:3px 3px 0 0;font-size:10px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${(() => { if (monitor.params) { const pv = Object.values(monitor.params)[0]; if (pv) return pv; } return monitor.id || ""; })()} </div>
+                                <div style="background:rgba(255,255,255,0.92);color:#000;border:1px solid #ff8c1a;border-top:none;border-radius:0 0 3px 3px;height:calc(100% - 18px);overflow-y:auto;padding:2px;">
+                                    ${items.map((v, i) => `<div style="display:flex;gap:4px;border-bottom:1px solid #eee;padding:1px 2px;"><span style="color:#aaa;min-width:14px;">${i+1}</span><span>${v}</span></div>`).join('')}
+                                </div>
+                                <div style="text-align:center;font-size:9px;color:#555;background:rgba(220,220,220,0.9);border:1px solid #ff8c1a;border-top:none;">${items.length} 個</div>
+                            `;
+                        } else {
+                            // 変数表示（normalまたはlarge-with-value）
+                            const value = Array.isArray(monitor.value) ? monitor.value.join(' ') : (monitor.value !== undefined ? String(monitor.value) : '');
+                            // ラベル: params の最初の値 > spriteName+id > id
+                            let label = id;
+                            if (monitor.params) {
+                                const pv = Object.values(monitor.params)[0];
+                                if (pv) label = pv;
+                            }
+                            if (monitor.mode === 'slider') {
+                                el.innerHTML = `
+                                    <div style="background:#ff8c1a;color:#fff;padding:2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.4);font-size:11px;">
+                                        <span style="font-weight:bold;">${label}</span>
+                                        <span style="background:#fff;color:#531a00;padding:1px 5px;border-radius:3px;min-width:24px;text-align:center;font-weight:bold;">${value}</span>
+                                    </div>
+                                `;
+                            } else if (monitor.mode === 'large') {
+                                el.innerHTML = `
+                                    <div style="background:#ff8c1a;color:#fff;padding:4px 12px;border-radius:4px;font-size:18px;font-weight:bold;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.4);">${value}</div>
+                                `;
+                            } else {
+                                el.innerHTML = `
+                                    <div style="background:#ff8c1a;color:#fff;padding:2px 6px 2px 6px;border-radius:4px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.4);font-size:11px;">
+                                        <span style="font-weight:bold;">${label}</span>
+                                        <span style="background:#fff;color:#531a00;padding:1px 5px;border-radius:3px;min-width:24px;text-align:center;font-weight:bold;">${value}</span>
+                                    </div>
+                                `;
+                            }
+                        }
+                    });
+
+                    // 非表示になったモニターを削除
+                    for (const id in monitorElements) {
+                        if (!visibleIds.has(id)) {
+                            monitorElements[id].remove();
+                            delete monitorElements[id];
+                        }
+                    }
+                });
+
                 // VMを起動（内部の setInterval ステッピングが始まる）
                 vm.start();
+                // vm.start() 直後に初期FPSを強制適用（デフォルトは30fps固定）
+                applyFPS(parseInt(fpsSlider.value));
                 // 描画ループ開始
                 requestAnimationFrame(renderLoop);
 
