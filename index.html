@@ -217,10 +217,10 @@
 
         #main-layout {
             display: grid;
-            grid-template-columns: 280px 1fr 320px;
+            grid-template-columns: 340px 1fr 340px;
             gap: 20px;
             width: 100%;
-            max-width: 1300px;
+            max-width: 1400px;
             height: 100vh;
             padding: 20px;
             box-sizing: border-box;
@@ -313,7 +313,8 @@
             padding: 20px;
             border-radius: 4px;
             overflow-y: auto;
-            max-height: 90vh; /* ガイドの高さ制限を調整 */
+            height: 92vh;
+            max-height: 92vh;
             box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
         }
 
@@ -407,8 +408,8 @@
             box-shadow: 0 0 30px rgba(255, 100, 200, 0.15);
             display: flex;
             flex-direction: column;
-            height: 90vh;
-            max-height: 90vh;
+            height: 92vh;
+            max-height: 92vh;
         }
 
         .copilot-h2 {
@@ -1118,7 +1119,7 @@
 
         // ── 設定 ──────────────────────────────────────────────────
         // 軽量モデル: Qwen2.5-1.5B (約1GB) — コーディングアシスタントに適している
-        const MODEL_ID = "Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC";
+        const MODEL_ID = "Qwen2.5-0.5B-Instruct-q4f16_1-MLC";
 
         const SYSTEM_PROMPT = `あなたは「Scratch Copilot」です。Night-Mod（Scratchカスタム実行環境）専用のコーディングアシスタントです。
 日本語で質問されたら日本語で答えてください。ブロックは「【カテゴリ】ブロック名」の形式で示してください。
