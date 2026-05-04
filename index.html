@@ -721,7 +721,7 @@
             <div id="copilot-status">待機中 — 「AIモデルを読み込む」を押してください</div>
 
             <div id="copilot-messages">
-                <div class="copilot-msg system-note">Scratch Copilot はブラウザ内 LLM を使用します。<br>初回はモデルのダウンロード（約600MB）が発生します。<br>Chrome / Edge（WebGPU対応）が必要です。</div>
+                <div class="copilot-msg system-note">Scratch Copilot はブラウザ内 LLM を使用します。<br>初回はモデルのダウンロード（約1GB）が発生します。<br>Chrome / Edge（WebGPU対応）が必要です。</div>
             </div>
 
             <div class="copilot-input-row">
@@ -1118,22 +1118,16 @@
         import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 
         // ── 設定 ──────────────────────────────────────────────────
-        // 軽量モデル: Qwen2.5-1.5B (約1GB) — コーディングアシスタントに適している
-        const MODEL_ID = "Qwen2.5-0.5B-Instruct-q4f16_1-MLC";
+        // コーディング特化モデル: Qwen2.5-Coder-1.5B (約1GB) — 0.5Bより品質大幅向上、速度は許容範囲
+        const MODEL_ID = "Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC";
 
-        const SYSTEM_PROMPT = `あなたは「Scratch Copilot」です。Night-Mod（Scratchカスタム実行環境）専用のコーディングアシスタントです。
-日本語で質問されたら日本語で答えてください。ブロックは「【カテゴリ】ブロック名」の形式で示してください。
+        const SYSTEM_PROMPT = `あなたはScratch Copilot。Night-Mod専用Scratchアシスタント。日本語で答えること。
 
-■ 必須知識（正確に覚えること）
-- Scratch: MITメディアラボ開発のビジュアルプログラミング環境。ステージ480×360px、座標X:-240〜240 / Y:-180〜180。
-- ブロックカテゴリ: 動き・見た目・音・イベント・制御・調べる・演算子・変数・リスト・自分で作る・拡張機能(ペン/音楽/TTS/翻訳)
-- リスト: 1始まりインデックス。追加/削除/挿入/取得/長さ/検索 の操作がある。
-- クローン: 「クローンを作る→クローンされたとき→このクローンを削除する」の3点セット。
-- メッセージ: 「○を送る」でスプライト間通信。「送って待つ」は受信側完了までブロック。
-- 当たり判定: 「○に触れた?」または色判定。ゲームループは「ずっと」内に記述。
-- Night-Mod固有: FPS30〜120変更可、翻訳拡張はGAS経由、sb3ファイルを読み込んで実行。
+Scratch基礎: ステージ480×360px / X:-240〜240 / Y:-180〜180 / カテゴリ: 動き・見た目・音・イベント・制御・調べる・演算子・変数・ペン等
+重要: リストは1始まり / クローンは「作る→されたとき→削除」/ メッセージでスプライト間通信 / ゲームループは「ずっと」内
+Night-Mod: FPS変更可・sb3読み込み・翻訳拡張対応
 
-回答は簡潔に。コード例はブロック列で示すこと。不明点は「公式ドキュメント(scratch.mit.edu)を確認推奨」と添えること。`;
+簡潔に答えよ。ブロック名は【カテゴリ】形式で示せ。`;
 
         // ── 状態 ──────────────────────────────────────────────────
         let engine = null;
@@ -1249,8 +1243,8 @@
                         ...chatHistory
                     ],
                     stream: true,
-                    temperature: 0.7,
-                    max_tokens: 600
+                    temperature: 0.4,
+                    max_tokens: 400
                 });
 
                 for await (const chunk of stream) {
@@ -1269,7 +1263,8 @@
                 chatHistory.push({ role: 'assistant', content: fullReply });
 
                 // 履歴が長くなりすぎないよう最新16ターンに制限
-                if (chatHistory.length > 32) chatHistory.splice(0, 2);
+                // 履歴は直近6ターン(12件)に制限 — 小モデルは長コンテキストで遅くなる
+                if (chatHistory.length > 12) chatHistory.splice(0, 2);
 
                 setStatus('✅ Scratch Copilot 準備完了！', 'ready');
             } catch (err) {
