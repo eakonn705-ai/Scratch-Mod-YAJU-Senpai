@@ -721,7 +721,7 @@
             <div id="copilot-status">待機中 — 「AIモデルを読み込む」を押してください</div>
 
             <div id="copilot-messages">
-                <div class="copilot-msg system-note">Scratch Copilot はブラウザ内 LLM を使用します。<br>初回はモデルのダウンロード（約1GB）が発生します。<br>Chrome / Edge（WebGPU対応）が必要です。</div>
+                <div class="copilot-msg system-note">Scratch Copilot はブラウザ内 LLM + RAG を使用します。<br>初回: 埋め込みモデル(~25MB) + LLM(~1GB)のダウンロードが発生します。<br>Chrome / Edge（WebGPU対応）が必要です。</div>
             </div>
 
             <div class="copilot-input-row">
@@ -1114,27 +1114,183 @@
          を参考に実装。ESM CDN経由でビルドなし単体HTMLに統合。
     ================================================================ -->
     <script type="module">
-        // WebLLM を ESM CDN から読み込む
+        // ================================================================
+        //  SCRATCH COPILOT v2 — WebLLM × transformers.js RAG
+        //  埋め込みベクトルRAGでハルシネーションを大幅低減
+        // ================================================================
         import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+        import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js";
 
-        // ── 設定 ──────────────────────────────────────────────────
-        // コーディング特化モデル: Qwen2.5-Coder-1.5B (約1GB) — 0.5Bより品質大幅向上、速度は許容範囲
-        const MODEL_ID = "Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC";
+        // transformers.js: ローカルモデルキャッシュを使用
+        env.allowLocalModels = false;
 
-        const SYSTEM_PROMPT = `あなたはScratch Copilot。Night-Mod専用Scratchアシスタント。日本語で答えること。
+        // ── モデル設定 ────────────────────────────────────────────
+        const LLM_MODEL_ID  = "Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC";
+        const EMBED_MODEL_ID = "Xenova/all-MiniLM-L6-v2"; // ~25MB、ブラウザ内完結
 
-Scratch基礎: ステージ480×360px / X:-240〜240 / Y:-180〜180 / カテゴリ: 動き・見た目・音・イベント・制御・調べる・演算子・変数・ペン等
-重要: リストは1始まり / クローンは「作る→されたとき→削除」/ メッセージでスプライト間通信 / ゲームループは「ずっと」内
-Night-Mod: FPS変更可・sb3読み込み・翻訳拡張対応
+        // ── ナレッジベース（RAG用） ───────────────────────────────
+        // Night-Mod と Scratch の正確な情報を Q&A 形式で定義
+        // 各エントリは { q: 質問テキスト, a: 回答テキスト } の形式
+        const KNOWLEDGE_BASE = [
+            // === Night-Mod 固有情報 ===
+            {
+                q: "Night-Modとは何ですか？",
+                a: "Night-ModはScratchのカスタム実行環境です。単一のHTMLファイルとして動作し、sb3ファイルを読み込んでScratchプロジェクトを実行できます。Scratch公式サイトとは独立したツールで、追加機能としてFPS変更、翻訳拡張のGoogle翻訳API対応などを提供します。"
+            },
+            {
+                q: "Night-ModのFPS機能について教えてください",
+                a: "Night-ModではFPS（フレームレート）をスライダーで変更できます。設定範囲は30〜120FPSです。FPSを上げるとプロジェクトの実行速度が上がり、下げると遅くなります。デフォルトは30FPSです。ゲームの速度調整に使えます。"
+            },
+            {
+                q: "Night-Modで翻訳拡張機能を使うには？",
+                a: "Night-Modの翻訳拡張はGoogle翻訳APIを経由して動作します。translate-service.scratch.mit.eduへのアクセスが403になるため、window.fetchをモンキーパッチしてtranslate.googleapis.comにリダイレクトしています。sb3ファイルに翻訳拡張が含まれていれば自動的に使えます。"
+            },
+            {
+                q: "Night-ModでScratchのsb3ファイルを読み込むには？",
+                a: "Night-Modの画面にある「Choose File」ボタンからsb3ファイルを選択します。読み込み後、自動的にGreen Flag（緑の旗）が実行されます。sb3に含まれるペンや翻訳などの拡張機能はloadProject前に自動ロードされます。"
+            },
+            {
+                q: "Night-ModでペンやTTS翻訳などの拡張機能は使えますか？",
+                a: "はい、使えます。ペン拡張機能は動作確認済みです。翻訳拡張機能もGoogle翻訳API経由で動作します。sb3ファイルを読み込む際に、project.json内のextensionsリストを読んで自動的にloadExtensionURL()でロードします。"
+            },
+            {
+                q: "Night-ModのScratch Copilotとは何ですか？",
+                a: "Scratch CopilotはNight-Modに統合されたAIアシスタントです。WebLLM（WebGPUを使ったブラウザ内LLM）とtransformers.jsによるRAG（検索拡張生成）を組み合わせています。Qwen2.5-Coder-1.5Bモデルを使用し、Scratch/Night-Modに関する質問に正確に答えます。WebGPU対応ブラウザ（Chrome/Edge）が必要です。"
+            },
+            // === Scratchの基本 ===
+            {
+                q: "Scratchのステージのサイズと座標系は？",
+                a: "Scratchのステージは幅480px、高さ360pxです。座標の原点(0,0)はステージ中央にあります。X座標は-240（左端）〜+240（右端）、Y座標は-180（下端）〜+180（上端）の範囲です。"
+            },
+            {
+                q: "Scratchのブロックカテゴリの種類は？",
+                a: "Scratchのブロックカテゴリは以下の通りです：【動き】スプライトの移動・回転・座標操作、【見た目】コスチューム・吹き出し・表示/非表示、【音】音の再生、【イベント】緑の旗・キー押下・メッセージ受信、【制御】ループ・条件分岐・待機・クローン、【調べる】マウス位置・キー状態・タイマー・質問、【演算子】数値/文字列/論理演算、【変数】変数とリストの操作、【拡張機能】ペン・音楽・テキスト読み上げ・翻訳など。"
+            },
+            {
+                q: "Scratchのクローンの使い方は？",
+                a: "クローンは3つのブロックをセットで使います。①【制御】「自分自身のクローンを作る」でクローン生成、②【制御】「クローンされたとき」でクローン専用の処理を開始、③【制御】「このクローンを削除する」でクローンを消去します。クローンはオリジナルのコスチューム・サイズ・座標を引き継ぎますが、変数は引き継ぎません。"
+            },
+            {
+                q: "Scratchのメッセージ送受信の仕組みは？",
+                a: "メッセージはスプライト間・スプライトとステージ間の通信に使います。【イベント】「○を送る」で送信すると、全スプライトが「○を受け取ったとき」で受信できます。「○を送って待つ」は受信側の処理が完全に終わるまで送信側が待機します。メッセージはグローバルに届きます。"
+            },
+            {
+                q: "Scratchでゲームを作るときの基本構造は？",
+                a: "Scratchのゲームの基本構造は「ずっと」ループです。緑の旗クリック→初期化→【制御】「ずっと」ループ内にゲームロジックを記述します。当たり判定は「ずっと」内で「○に触れた?」を毎フレーム確認します。スコアは変数で管理し、ゲームオーバーは「すべてを止める」または別のコスチュームに切り替えで実装します。"
+            },
+            {
+                q: "Scratchで当たり判定を実装する方法は？",
+                a: "当たり判定には2種類あります。①スプライト判定：【調べる】「○に触れた?」で特定のスプライトとの接触を検出。②色判定：【調べる】「色○に触れた?」で特定の色との接触を検出。どちらも「ずっと」ループ内で毎フレーム確認するのが基本です。キャラクターのコスチューム形状に合わせた判定が自動で行われます。"
+            },
+            {
+                q: "Scratchのリストの使い方は？",
+                a: "リストは1始まりのインデックスを使います。主な操作：「○をリストに追加する」（末尾追加）、「リストの○番目を削除する」、「リストの○番目に○を挿入する」、「リストの○番目」（値取得）、「リストの長さ」（件数取得）、「リストに○が含まれる?」（検索）。「リストのすべてを削除する」で全件削除できます。"
+            },
+            {
+                q: "Scratchの変数の使い方は？",
+                a: "変数は【変数】カテゴリで作成します。スコープは「すべてのスプライト用」（グローバル）と「このスプライトのみ」（ローカル）の2種類。ブロック：「○を○にする」（代入）、「○を○ずつ変える」（加算）、「○を表示する/隠す」（モニター表示切替）。クローンでローカル変数を使うとクローンごとに独立した値を持てます。"
+            },
+            {
+                q: "Scratchのペン拡張機能の使い方は？",
+                a: "ペン拡張機能のブロック：「ペンを下ろす」（描画開始）、「ペンを上げる」（描画停止）、「スタンプ」（コスチューム形状を描画）、「ペンの色を○にする」、「ペンの太さを○にする」、「全部消す」（描画消去）。スプライトが動いた軌跡を描きます。ステージには描画専用のレイヤーがあります。"
+            },
+            {
+                q: "Scratchで音を再生する方法は？",
+                a: "音の再生には2種類あります。①「○の音を鳴らす」：再生しながら次のブロックに進む（非同期）。②「○の音が終わるまで鳴らす」：音の再生が終わるまで待機（同期）。「すべての音を止める」で全音停止。音はスプライトごとに持ちます。"
+            },
+            {
+                q: "Scratchで文字を表示する方法は？",
+                a: "文字の表示方法：①【見た目】「○と言う」：吹き出し形式で表示（時間制限なし）。②「○と○秒言う」：指定秒数後に消える。③「○とつぶやく」：吹き出しなし（think）。④変数モニターを表示してステージ上に数値や文字を常時表示する方法もあります。"
+            },
+            {
+                q: "Scratchで条件分岐をする方法は？",
+                a: "条件分岐は【制御】カテゴリのブロックを使います。①「もし○なら」：条件が真のとき実行。②「もし○なら〜でなければ」：if-else。③「○まで待つ」：条件が真になるまで待機。④「○まで繰り返す」：条件が真になるまでループ。条件部分には演算子や調べるカテゴリのブロックを入れます。"
+            },
+            {
+                q: "Scratchのタイマーを使う方法は？",
+                a: "タイマーは【調べる】カテゴリにあります。「タイマー」ブロックで現在の経過秒数を取得できます（小数点以下あり）。「タイマーをリセット」でゼロに戻します。緑の旗を押した時点ではリセットされないので、初期化時に明示的にリセットすることを推奨します。"
+            },
+            {
+                q: "Scratchでキーボード入力を処理する方法は？",
+                a: "キーボード入力の方法：①【イベント】「○キーが押されたとき」：キーを押したとき一度だけ実行。②「ずっと」内で【調べる】「○キーが押された?」：毎フレームキー状態を確認（ゲームの移動操作に適切）。対応キー：スペース・上下左右矢印・a〜z・0〜9など。"
+            },
+            {
+                q: "Scratchでマウスを使う方法は？",
+                a: "マウス関連のブロック：【調べる】「マウスのX座標」「マウスのY座標」でマウス位置を取得、「マウスが押された?」でクリック状態を確認、「このスプライトが押された?」でスプライトへのクリックを検出。【イベント】「このスプライトが押されたとき」でクリックイベントも使えます。"
+            },
+            {
+                q: "Scratchで乱数を使う方法は？",
+                a: "【演算子】「○から○までの乱数」ブロックを使います。両端を含む整数の乱数を生成します。例：「1から10までの乱数」は1〜10のいずれかの整数。小数を生成したい場合は「0.0から1.0までの乱数」のように小数を含む値を指定すると小数の乱数になります。"
+            },
+            {
+                q: "Scratchで文字列を操作する方法は？",
+                a: "文字列操作のブロック（【演算子】カテゴリ）：「○と○」：文字列の結合、「○の文字数」：文字列の長さ、「○の○番目の文字」：特定位置の1文字を取得（1始まり）、「○に○を含む?」：部分文字列の検索。数値と文字列は自動変換されます。"
+            },
+            {
+                q: "Scratchのコスチュームと見た目を操作する方法は？",
+                a: "【見た目】カテゴリのブロック：「コスチュームを○にする」（名前/番号で切替）、「次のコスチューム」（順番に切替）、「大きさを○%にする」「大きさを○%ずつ変える」（サイズ変更）、「色の効果を○にする」（色相・明るさ・透明度など）、「表示する」「隠す」（表示切替）。"
+            },
+            {
+                q: "Scratchで自分でブロックを作る方法は？",
+                a: "【自分で作る】カテゴリの「ブロックを作る」から定義できます。引数（数値/文字列/ブール値）を持つことができます。定義したブロックは同じスプライト内でのみ使用可能です。「画面を再描画せずに実行する」オプションをオンにすると高速化できます（ターボモード的な動作）。"
+            },
+            {
+                q: "Scratchでスプライトを動かす方法は？",
+                a: "スプライトの移動方法：①「○歩動かす」：向いている方向に移動。②「X座標を○にする」「Y座標を○にする」：絶対座標で移動。③「X座標を○ずつ変える」「Y座標を○ずつ変える」：相対移動。④「○秒でX:○Y:○に行く」：スムーズな移動。⑤「マウスのポインター・○に行く」：瞬間移動。"
+            },
+            {
+                q: "Scratchでスプライトを回転させる方法は？",
+                a: "スプライトの回転：①「○度に向ける」：絶対角度で向きを設定（0=上、90=右、180=下、-90=左）。②「○度回す（右/左）」：現在の向きから相対回転。③「マウスのポインターへ向ける」：マウス方向を向く。「回転方法」の設定で「左右のみ」「回転しない」にもできます。"
+            },
+            {
+                q: "Scratchで背景（バックドロップ）を変える方法は？",
+                a: "背景の変更は【見た目】カテゴリ：「背景を○にする」「次の背景」「前の背景」。【イベント】「背景が○になったとき」でトリガーできます。ステージもスクリプトを持てるため、背景が変わったときのイベントをステージのスクリプトで処理できます。"
+            },
+            {
+                q: "Scratchで「聞いて待つ」ブロックを使う方法は？",
+                a: "【調べる】「○と聞いて待つ」を実行すると、画面下部に入力欄が表示されユーザーの入力を待ちます。入力確定後、「答え」ブロックで入力値を取得できます。「答え」は文字列型ですが数値として演算でも使えます。Night-Modでも対応しています。"
+            },
+            {
+                q: "Scratchでスプライトのレイヤー（重なり順）を変える方法は？",
+                a: "【見た目】カテゴリ：「最前面へ移動する」「最背面へ移動する」「前へ○層移動する」「後ろへ○層移動する」でレイヤーを操作できます。後から追加したスプライトほど前面に表示されます。ペンの描画はすべてのスプライトより後ろに表示されます。"
+            },
+            {
+                q: "Scratchでデータを保存・読み込みする方法は？",
+                a: "Scratch標準機能ではブラウザセッションをまたいだデータ保存はできません。クラウド変数（Scratchオンライン版のみ）を使うとサーバーに値を保存できますが、数値のみで10変数まで。一般的な代替手段：「答え」ブロックでユーザーに入力させてリストに格納、またはURLにエンコードして外部連携。"
+            },
+            {
+                q: "Scratchの翻訳拡張機能の使い方は？",
+                a: "翻訳拡張機能のブロック：「○を○に翻訳する」で指定言語に翻訳した文字列を返します。「言語コード」：ja=日本語、en=英語、zh-cn=中国語（簡体）、ko=韓国語など。「視聴者の言語」で閲覧者のブラウザ言語を取得できます。Night-ModではGoogle翻訳API経由で動作します。"
+            },
+            {
+                q: "Scratchでゲームオーバーやクリア処理を実装する方法は？",
+                a: "ゲームオーバー/クリアの実装パターン：①「すべてを止める」ブロックで全スクリプト停止。②背景をゲームオーバー画面に切り替えて継続。③変数「ゲーム状態」を設け、「ずっと」ループ内で状態に応じて処理を分岐。④メッセージ「ゲームオーバー」を送り、各スプライトで受信して停止処理。"
+            },
+            {
+                q: "Scratchで音楽拡張機能を使う方法は？",
+                a: "音楽拡張機能のブロック：「○のドラムを○拍鳴らす」「○の音符を○拍鳴らす」（MIDIノート番号）、「テンポを○BPMにする」「テンポを○変える」、「楽器を○にする」（1〜21種類）。音符は60=中央ド、半音階対応。テンポはグローバル設定です。"
+            },
+            {
+                q: "Scratchのテキスト読み上げ（TTS）拡張機能の使い方は？",
+                a: "TTS拡張機能のブロック：「○を読み上げる」でテキストを音声再生、「声を○にする」（アルト/テノール/スクイーキー/ジャイアント/キトゥン）、「言語を○にする」。ブラウザのWeb Speech APIを使用します。日本語対応ですが、ブラウザにより音質が異なります。"
+            },
+        ];
 
-簡潔に答えよ。ブロック名は【カテゴリ】形式で示せ。`;
+        // ── システムプロンプト（コア部分のみ・短く） ────────────────
+        const SYSTEM_PROMPT = `あなたはScratch Copilot。Night-Mod（Scratchカスタム実行環境）のAIアシスタント。
+日本語で簡潔に答えよ。提供された参考情報を最優先すること。参考情報にない内容は「わかりません」と答えよ。
+ブロック名は【カテゴリ】形式で示せ。`;
 
         // ── 状態 ──────────────────────────────────────────────────
-        let engine = null;
-        let isLoading = false;
-        let isReady = false;
-        const chatHistory = []; // 会話履歴（マルチターン対応）
+        let llmEngine   = null;
+        let embedder    = null;
+        let isLLMReady  = false;
+        let isEmbedReady = false;
+        let isLoading   = false;
+        const chatHistory = [];
 
+        // 事前計算済みの知識ベクトル（起動時に計算）
+        let kbVectors = null;
         // ── DOM参照 ───────────────────────────────────────────────
         const loadBtn      = document.getElementById('copilot-load-btn');
         const statusEl     = document.getElementById('copilot-status');
@@ -1153,16 +1309,19 @@ Night-Mod: FPS変更可・sb3読み込み・翻訳拡張対応
             progressBar.style.width = Math.min(100, Math.round(pct * 100)) + '%';
         }
 
-        function addMessage(role, text) {
-            const div = document.createElement('div');
-            div.className = 'copilot-msg ' + role;
-            // コードブロック簡易レンダリング
-            div.innerHTML = text
+        function renderText(text) {
+            return text
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
                 .replace(/```([\s\S]*?)```/g, '<pre>$1</pre>')
                 .replace(/`([^`]+)`/g, '<code>$1</code>');
+        }
+
+        function addMessage(role, text) {
+            const div = document.createElement('div');
+            div.className = 'copilot-msg ' + role;
+            div.innerHTML = renderText(text);
             messagesEl.appendChild(div);
             messagesEl.scrollTop = messagesEl.scrollHeight;
             return div;
@@ -1173,13 +1332,62 @@ Night-Mod: FPS変更可・sb3読み込み・翻訳拡張対応
             sendBtn.disabled = !enabled;
         }
 
+        // ── RAG: コサイン類似度 ──────────────────────────────────
+        function cosineSimilarity(a, b) {
+            let dot = 0, normA = 0, normB = 0;
+            for (let i = 0; i < a.length; i++) {
+                dot   += a[i] * b[i];
+                normA += a[i] * a[i];
+                normB += b[i] * b[i];
+            }
+            return dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
+        }
+
+        // ── RAG: ナレッジベースを事前ベクトル化 ─────────────────
+        async function buildKnowledgeVectors() {
+            setStatus('🧠 ナレッジベースを構築中…', 'active');
+            // q + a を結合してベクトル化（文脈を豊かにする）
+            const texts = KNOWLEDGE_BASE.map(item => item.q + ' ' + item.a);
+            const output = await embedder(texts, { pooling: 'mean', normalize: true });
+            // Float32Array の配列として保持
+            kbVectors = [];
+            for (let i = 0; i < KNOWLEDGE_BASE.length; i++) {
+                kbVectors.push(Array.from(output[i].data));
+            }
+        }
+
+        // ── RAG: クエリに関連する知識を検索 ─────────────────────
+        async function retrieveContext(query, topK = 3) {
+            if (!embedder || !kbVectors) return '';
+            const qOut = await embedder([query], { pooling: 'mean', normalize: true });
+            const qVec = Array.from(qOut[0].data);
+
+            // 各ナレッジとのコサイン類似度を計算
+            const scored = KNOWLEDGE_BASE.map((item, i) => ({
+                item,
+                score: cosineSimilarity(qVec, kbVectors[i])
+            }));
+            scored.sort((a, b) => b.score - a.score);
+
+            // スコアが閾値(0.25)以上のものだけ採用
+            const relevant = scored.slice(0, topK).filter(s => s.score > 0.25);
+            if (relevant.length === 0) return '';
+
+            return relevant.map(s =>
+                `【参考情報 (関連度${Math.round(s.score * 100)}%)】
+Q: ${s.item.q}
+A: ${s.item.a}`
+            ).join('
+
+');
+        }
+
         // ── モデル読み込み ──────────────────────────────────────────
         async function loadModel() {
-            if (isLoading || isReady) return;
+            if (isLoading || (isLLMReady && isEmbedReady)) return;
             isLoading = true;
             loadBtn.disabled = true;
 
-            // WebGPU 対応チェック
             if (!navigator.gpu) {
                 setStatus('❌ WebGPU 非対応ブラウザです。Chrome/Edge 121+ をお使いください。', 'error');
                 loadBtn.disabled = false;
@@ -1187,28 +1395,44 @@ Night-Mod: FPS変更可・sb3読み込み・翻訳拡張対応
                 return;
             }
 
-            setStatus('📥 モデルを初期化中… (初回は数分かかります)', 'active');
-            setProgress(0);
-
             try {
-                engine = await webllm.CreateMLCEngine(MODEL_ID, {
+                // ── Step 1: 埋め込みモデル読み込み（~25MB・高速） ──
+                setStatus('📥 [1/3] 埋め込みモデルを読み込み中… (~25MB)', 'active');
+                setProgress(0);
+                embedder = await pipeline('feature-extraction', EMBED_MODEL_ID, {
+                    progress_callback: (report) => {
+                        if (report.status === 'progress') {
+                            setProgress((report.progress || 0) / 100 * 0.2); // 全体の0〜20%
+                        }
+                    }
+                });
+                isEmbedReady = true;
+
+                // ── Step 2: ナレッジベースのベクトル化 ──────────────
+                setStatus('📥 [2/3] ナレッジベースをベクトル化中…', 'active');
+                await buildKnowledgeVectors();
+                setProgress(0.25);
+
+                // ── Step 3: LLMモデル読み込み（~1GB） ──────────────
+                setStatus('📥 [3/3] LLMモデルを読み込み中… (初回 ~1GB)', 'active');
+                llmEngine = await webllm.CreateMLCEngine(LLM_MODEL_ID, {
                     initProgressCallback: (report) => {
                         const pct = report.progress || 0;
-                        setProgress(pct);
-                        // テキストから余分な部分を除去して表示
+                        setProgress(0.25 + pct * 0.75); // 全体の25〜100%
                         const shortText = report.text
-                            ? report.text.replace(/\[.*?\]/g, '').trim().slice(0, 60)
+                            ? report.text.replace(/\[.*?\]/g, '').trim().slice(0, 50)
                             : '';
-                        setStatus(`📥 ${Math.round(pct * 100)}% — ${shortText}`, 'active');
+                        setStatus(`📥 [3/3] ${Math.round(pct * 100)}% — ${shortText}`, 'active');
                     }
                 });
 
                 setProgress(1);
-                isReady = true;
+                isLLMReady = true;
                 isLoading = false;
-                setStatus('✅ Scratch Copilot 準備完了！ブロックについて何でも聞いてね', 'ready');
+                setStatus('✅ Scratch Copilot 準備完了！（RAGモード）', 'ready');
                 setInputEnabled(true);
-                addMessage('system-note', '— モデルの読み込みが完了しました —');
+                addMessage('system-note', '— RAGモードで起動しました。Night-Mod/Scratchについて正確に答えます —');
+
             } catch (err) {
                 isLoading = false;
                 loadBtn.disabled = false;
@@ -1221,52 +1445,68 @@ Night-Mod: FPS変更可・sb3読み込み・翻訳拡張対応
 
         // ── メッセージ送信 ──────────────────────────────────────────
         async function sendMessage() {
-            if (!isReady || !engine) return;
+            if (!isLLMReady || !llmEngine) return;
             const text = inputEl.value.trim();
             if (!text) return;
 
             inputEl.value = '';
             setInputEnabled(false);
-            setStatus('💭 考え中…', 'active');
+            setStatus('🔍 関連情報を検索中…', 'active');
 
             addMessage('user', text);
             chatHistory.push({ role: 'user', content: text });
 
-            // 返答バブルを先に作って逐次表示
             const assistantBubble = addMessage('assistant', '…');
             let fullReply = '';
 
             try {
-                const stream = await engine.chat.completions.create({
+                // ── RAG: 関連ナレッジを取得 ─────────────────────────
+                const context = await retrieveContext(text, 3);
+                setStatus('💭 回答を生成中…', 'active');
+
+                // ── コンテキスト付きシステムプロンプト ──────────────
+                let systemContent = SYSTEM_PROMPT;
+                if (context) {
+                    systemContent += '
+
+以下の参考情報を必ず参照して回答せよ：
+
+' + context;
+                }
+
+                // ── LLM推論 ──────────────────────────────────────────
+                const stream = await llmEngine.chat.completions.create({
                     messages: [
-                        { role: 'system', content: SYSTEM_PROMPT },
-                        ...chatHistory
+                        { role: 'system', content: systemContent },
+                        ...chatHistory.slice(-10) // 直近5ターン
                     ],
                     stream: true,
-                    temperature: 0.4,
+                    temperature: 0.3,
                     max_tokens: 400
                 });
 
                 for await (const chunk of stream) {
                     const delta = chunk.choices?.[0]?.delta?.content || '';
                     fullReply += delta;
-                    // リアルタイムでバブルを更新
-                    assistantBubble.innerHTML = fullReply
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/```([\s\S]*?)```/g, '<pre>$1</pre>')
-                        .replace(/`([^`]+)`/g, '<code>$1</code>');
+                    assistantBubble.innerHTML = renderText(fullReply);
                     messagesEl.scrollTop = messagesEl.scrollHeight;
                 }
 
                 chatHistory.push({ role: 'assistant', content: fullReply });
-
-                // 履歴が長くなりすぎないよう最新16ターンに制限
-                // 履歴は直近6ターン(12件)に制限 — 小モデルは長コンテキストで遅くなる
                 if (chatHistory.length > 12) chatHistory.splice(0, 2);
 
-                setStatus('✅ Scratch Copilot 準備完了！', 'ready');
+                // RAGで使用した参照元を表示
+                if (context) {
+                    const sourceNote = document.createElement('div');
+                    sourceNote.className = 'copilot-msg system-note';
+                    sourceNote.style.fontSize = '10px';
+                    sourceNote.textContent = '📚 参照: ナレッジベース ' + Math.min(3, (context.match(/【参考情報/g)||[]).length) + '件';
+                    messagesEl.appendChild(sourceNote);
+                    messagesEl.scrollTop = messagesEl.scrollHeight;
+                }
+
+                setStatus('✅ Scratch Copilot 準備完了！（RAGモード）', 'ready');
+
             } catch (err) {
                 assistantBubble.innerHTML = '<span style="color:#ff6688">エラーが発生しました。もう一度お試しください。</span>';
                 setStatus('⚠️ 応答エラー', 'error');
@@ -1279,9 +1519,7 @@ Night-Mod: FPS変更可・sb3読み込み・翻訳拡張対応
 
         // ── イベントリスナー ────────────────────────────────────────
         loadBtn.addEventListener('click', loadModel);
-
         sendBtn.addEventListener('click', sendMessage);
-
         inputEl.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
