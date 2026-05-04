@@ -448,7 +448,7 @@
             </div>
         </section>
 
-        <!-- GUIDE SECTION (維持) -->
+        <!-- GUIDE SECTION -->
         <aside id="guide-section">
             <h2 class="guide-h2">
                 <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
@@ -457,22 +457,82 @@
 
             <div class="guide-item">
                 <h3>01. プロジェクトの読込</h3>
-                <p>下の「Choose File」ボタンから、あなたのパソコンにある .sb3 ファイルを選択してください。</p>
+                <p>「Choose File」ボタンをクリックし、パソコン上の <code style="background:rgba(0,212,255,0.15);padding:1px 5px;border-radius:3px;color:#00d4ff;">.sb3</code> ファイルを選択してください。ファイルを選ぶと自動的に読み込みが始まり、完了するとステータスが <strong style="color:#00ff88;">CORE ACTIVE</strong> に変わります。<br>読み込みに成功すると、プロジェクトは自動的に緑の旗が押された状態で起動します。</p>
             </div>
 
             <div class="guide-item">
                 <h3>02. 実行と停止</h3>
-                <p>緑の旗ボタンで実行、赤いボタンでプロジェクトを強制停止します。</p>
+                <p>
+                    <span style="color:#00ff88;">▶ 緑の旗ボタン</span>：プロジェクトを最初から実行します。すでに動いている場合はリスタートされます。<br>
+                    <span style="color:#ff3366;">⬡ 赤い停止ボタン</span>：実行中のすべてのスクリプトを強制停止します。音も止まります。
+                </p>
             </div>
 
             <div class="guide-item">
-                <h3>03. オーバークロック</h3>
-                <p>スライダーを動かすことで、最大120FPSまで実行速度を加速させることができます。厳密なデルタタイム制御を行います。</p>
+                <h3>03. FPS オーバークロック</h3>
+                <p>スライダーで実行フレームレートを <strong>30〜120 FPS</strong> の範囲で調整できます。デフォルトは通常の Scratch と同じ 30 FPS です。<br>
+                数値を上げると演算・アニメーション・物理が高速になります。ただし、<code style="background:rgba(0,212,255,0.15);padding:1px 5px;border-radius:3px;color:#00d4ff;">wait</code> ブロックや <code style="background:rgba(0,212,255,0.15);padding:1px 5px;border-radius:3px;color:#00d4ff;">タイマー</code> は実時間ベースのため影響を受けません。高FPS化を前提としていないプロジェクトでは動作が乱れる場合があります。</p>
             </div>
 
             <div class="guide-item">
-                <h3>04. キー操作</h3>
-                <p>スペースキーや矢印キーの入力に対応しています。</p>
+                <h3>04. キーボード操作</h3>
+                <p>キーボード入力はステージキャンバスにフォーカスが当たっている状態で動作します。<br>
+                対応キー：<strong>Space</strong>、<strong>矢印キー（↑↓←→）</strong>、<strong>英数字キー</strong> など Scratch 標準のすべてのキー。<br>
+                テキスト入力（ask ブロック）中はゲームへのキー送信が自動的に抑制されるため、回答入力と操作が干渉しません。</p>
+            </div>
+
+            <div class="guide-item">
+                <h3>05. マウス操作</h3>
+                <p>ステージ上でのマウス移動・クリックは Scratch の座標系（X: −240〜240、Y: −180〜180）に変換されてVMへ送信されます。スプライトのクリック判定やマウス追従なども通常通り動作します。</p>
+            </div>
+
+            <div class="guide-item">
+                <h3>06. 翻訳拡張ブロック</h3>
+                <p>Scratch の「翻訳」拡張ブロックが使えます。通常の Scratch サーバーは外部からブロックされますが、Night-Mod では <strong>Google Apps Script（GAS）</strong> 経由の JSONP 方式でリクエストを迂回し、翻訳を実現しています。<br>
+                翻訳が返ってこない場合、GAS のデプロイ設定で「アクセスできるユーザー」を <strong>「全員（匿名ユーザーを含む）」</strong> に設定してください。</p>
+            </div>
+
+            <div class="guide-item">
+                <h3>07. 変数・リストモニター</h3>
+                <p>プロジェクト内で表示設定にした変数やリストは、ステージ上に重なって表示されます。<br>
+                <strong>リスト</strong>はアイテム数が多い場合でも<strong>スクロール可能</strong>です。リスト内でマウスホイールを回すかドラッグしてスクロールしてください。変数は通常・大きい・スライダーの各表示モードに対応しています。</p>
+            </div>
+
+            <div class="guide-item">
+                <h3>08. ask ブロック（質問入力）</h3>
+                <p>「〇〇と聞いて待つ」ブロックが実行されると、ステージ下部に入力フォームが表示されます。テキストを入力して <strong>Enter キー</strong> または送信ボタンをクリックすると、答えがVMへ渡されてスクリプトが続行されます。</p>
+            </div>
+
+            <div class="guide-item">
+                <h3>09. 背景画像のカスタマイズ</h3>
+                <p>Night-Mod のインターフェース背景は <code style="background:rgba(0,212,255,0.15);padding:1px 5px;border-radius:3px;color:#00d4ff;">night-mod.png.jpg</code> というファイル名の画像を参照しています。このファイルを差し替えることで、好きな背景画像に変更できます。</p>
+            </div>
+
+            <div class="guide-item">
+                <h3>10. ステータスバーの見方</h3>
+                <p>
+                    <span style="color:#aaa;">CONNECTING…</span> : ライブラリ読み込み中<br>
+                    <span style="color:#aaa;">SYNCING…</span> : VM初期化リトライ中<br>
+                    <span style="color:#00ff88;">CORE ACTIVE</span> : 正常起動・待機中<br>
+                    <span style="color:#ffd700;">UPLOADING…</span> : sb3 ファイル読み込み中<br>
+                    <span style="color:#ff3366;">ERROR / FAILURE</span> : 初期化・読込エラー
+                </p>
+            </div>
+
+            <div class="guide-item">
+                <h3>11. 対応拡張機能</h3>
+                <p>プロジェクト内に含まれる拡張機能は、読み込み時に自動検出してロードを試みます。<br>
+                正式対応：<strong>翻訳</strong>、<strong>テキスト読み上げ（TTS）</strong>、<strong>ペン</strong>、<strong>音楽</strong>、<strong>ビデオモーション検出</strong> など。ただし一部の非公式拡張はロードできない場合があります。</p>
+            </div>
+
+            <div class="guide-item">
+                <h3>12. トラブルシューティング</h3>
+                <p>
+                    <strong>音が出ない</strong>：ブラウザの自動再生ポリシーにより、最初の操作（クリックやキー押下）の後から音が有効になります。<br>
+                    <strong>画面が真っ黒</strong>：緑の旗を押してプロジェクトを起動してください。sb3 を再度読み込む方法も有効です。<br>
+                    <strong>翻訳が動かない</strong>：GAS のデプロイ設定を確認してください（項目06を参照）。<br>
+                    <strong>読込エラー</strong>：有効な .sb3 ファイルか確認してください。破損したファイルや未対応形式は読み込めません。
+                </p>
             </div>
 
             <div class="mt-8 pt-6 border-t border-white/10 text-[10px] text-gray-400">
@@ -633,7 +693,7 @@
                 // ★修正4: モニター（変数・リスト表示）の描画修正
                 // MONITORS_UPDATE イベントを受け取り、カスタム DOM でモニターを描画する
                 const monitorContainer = document.createElement('div');
-                monitorContainer.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden;';
+                monitorContainer.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden;z-index:10;';
                 document.getElementById('canvas-container').appendChild(monitorContainer);
 
                 const monitorElements = {};
@@ -672,10 +732,10 @@
                             const wPct = w / 480 * 100;
                             const hPct = h / 360 * 100;
                             const items = monitor.value || [];
-                            el.style.cssText += `width:${wPct}%;height:${hPct}%;`;
+                            el.style.cssText += `width:${wPct}%;height:${hPct}%;pointer-events:auto;`;
                             el.innerHTML = `
                                 <div style="background:rgba(220,110,0,0.9);color:#fff;padding:1px 4px;border-radius:3px 3px 0 0;font-size:10px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${(() => { if (monitor.params) { const pv = Object.values(monitor.params)[0]; if (pv) return pv; } return monitor.id || ""; })()} </div>
-                                <div style="background:#ffffff;color:#000;border:1px solid #ff8c1a;border-top:none;border-radius:0 0 3px 3px;height:calc(100% - 18px);overflow-y:auto;padding:2px;">
+                                <div style="background:#ffffff;color:#000;border:1px solid #ff8c1a;border-top:none;border-radius:0 0 3px 3px;height:calc(100% - 18px);overflow-y:scroll;padding:2px;">
                                     ${items.map((v, i) => `<div style="display:flex;gap:4px;border-bottom:1px solid #eee;padding:1px 2px;"><span style="color:#aaa;min-width:14px;">${i+1}</span><span>${v}</span></div>`).join('')}
                                 </div>
                                 <div style="text-align:center;font-size:9px;color:#555;background:#dcdcdc;border:1px solid #ff8c1a;border-top:none;">${items.length} 個</div>
