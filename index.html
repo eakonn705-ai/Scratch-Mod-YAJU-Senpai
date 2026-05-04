@@ -1307,7 +1307,7 @@
                 // GASプロキシ経由でHuggingFace APIを呼ぶ
                 const res = await fetch(GAS_PROXY_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'text/plain' },
                     body: JSON.stringify({
                         messages: [
                             { role: 'system', content: systemContent },
