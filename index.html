@@ -217,15 +217,15 @@
 
         #main-layout {
             display: grid;
-            grid-template-columns: 1fr 320px;
-            gap: 24px;
+            grid-template-columns: 280px 1fr 320px;
+            gap: 20px;
             width: 100%;
-            max-width: 1100px;
-            height: 100vh; /* ビューポート全体を使用 */
-            padding: 20px; /* 全体のパディング */
+            max-width: 1300px;
+            height: 100vh;
+            padding: 20px;
             box-sizing: border-box;
             z-index: 1;
-            align-items: start; /* 上寄せに配置 */
+            align-items: start;
         }
 
         #player-section {
@@ -233,7 +233,16 @@
             flex-direction: column;
             align-items: center;
             justify-content: flex-start;
-            padding-top: 5px; /* 上部からの距離をさらに短縮 */
+            padding-top: 5px;
+            order: 2;
+        }
+
+        #guide-section {
+            order: 1;
+        }
+
+        #copilot-section {
+            order: 3;
         }
 
         .title-container {
@@ -387,15 +396,174 @@
             background: #00d4ff;
         }
         
-        @media (max-width: 850px) {
+        /* ========== SCRATCH COPILOT (Window X) ========== */
+        #copilot-section {
+            background: rgba(5, 0, 20, 0.88);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 100, 200, 0.35);
+            border-left: 4px solid #ff64c8;
+            padding: 16px;
+            border-radius: 4px;
+            box-shadow: 0 0 30px rgba(255, 100, 200, 0.15);
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+            max-height: 90vh;
+        }
+
+        .copilot-h2 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.95rem;
+            color: #ff64c8;
+            border-bottom: 1px solid rgba(255, 100, 200, 0.4);
+            margin: 0 0 10px 0;
+            padding-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        #copilot-status {
+            font-size: 10px;
+            color: #888;
+            margin-bottom: 8px;
+            padding: 4px 8px;
+            background: rgba(255,100,200,0.05);
+            border-radius: 3px;
+            border: 1px solid rgba(255,100,200,0.15);
+            flex-shrink: 0;
+            min-height: 20px;
+            line-height: 1.4;
+        }
+        #copilot-status.active { color: #ff64c8; }
+        #copilot-status.error  { color: #ff4466; }
+        #copilot-status.ready  { color: #88ffcc; }
+
+        #copilot-progress {
+            height: 3px;
+            background: rgba(255,100,200,0.15);
+            border-radius: 2px;
+            margin-bottom: 8px;
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+        #copilot-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #ff64c8, #cc44ff);
+            width: 0%;
+            transition: width 0.4s;
+            border-radius: 2px;
+        }
+
+        #copilot-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 4px 2px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-height: 0;
+        }
+        #copilot-messages::-webkit-scrollbar { width: 4px; }
+        #copilot-messages::-webkit-scrollbar-thumb {
+            background: rgba(255,100,200,0.4);
+            border-radius: 2px;
+        }
+
+        .copilot-msg {
+            font-size: 12px;
+            line-height: 1.55;
+            padding: 7px 10px;
+            border-radius: 6px;
+            word-break: break-word;
+            white-space: pre-wrap;
+        }
+        .copilot-msg.user {
+            background: rgba(0, 212, 255, 0.12);
+            border: 1px solid rgba(0, 212, 255, 0.25);
+            color: #cceeff;
+            align-self: flex-end;
+            max-width: 92%;
+        }
+        .copilot-msg.assistant {
+            background: rgba(255, 100, 200, 0.09);
+            border: 1px solid rgba(255, 100, 200, 0.2);
+            color: #f0d0ff;
+            align-self: flex-start;
+            max-width: 96%;
+        }
+        .copilot-msg.system-note {
+            background: transparent;
+            border: none;
+            color: #555;
+            font-size: 10px;
+            text-align: center;
+            align-self: center;
+        }
+
+        .copilot-input-row {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+            flex-shrink: 0;
+        }
+
+        #copilot-input {
+            flex: 1;
+            background: rgba(255,100,200,0.06);
+            border: 1px solid rgba(255,100,200,0.3);
+            color: #fff;
+            font-size: 12px;
+            padding: 7px 10px;
+            border-radius: 5px;
+            font-family: 'Rajdhani', sans-serif;
+            resize: none;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        #copilot-input:focus { border-color: #ff64c8; }
+        #copilot-input::placeholder { color: #553355; }
+
+        #copilot-send {
+            background: linear-gradient(135deg, #ff64c8, #cc44ff);
+            border: none;
+            color: #fff;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 10px;
+            padding: 7px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+            white-space: nowrap;
+        }
+        #copilot-send:hover:not(:disabled) { opacity: 0.85; transform: scale(1.03); }
+        #copilot-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        #copilot-load-btn {
+            background: transparent;
+            border: 1px solid rgba(255,100,200,0.5);
+            color: #ff64c8;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 9px;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 8px;
+            flex-shrink: 0;
+            transition: background 0.2s;
+        }
+        #copilot-load-btn:hover:not(:disabled) { background: rgba(255,100,200,0.12); }
+        #copilot-load-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        @media (max-width: 1100px) {
             #main-layout {
                 grid-template-columns: 1fr;
                 height: auto;
                 overflow-y: auto;
             }
-            #guide-section {
-                display: none;
-            }
+            #guide-section, #copilot-section { display: none; }
         }
     </style>
 </head>
@@ -538,6 +706,29 @@
                 <p>Environment: Production</p>
             </div>
         </aside>
+
+        <!-- WINDOW X: SCRATCH COPILOT -->
+        <aside id="copilot-section">
+            <h2 class="copilot-h2">
+                <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2M7.5 13A2.5 2.5 0 0 0 5 15.5 2.5 2.5 0 0 0 7.5 18 2.5 2.5 0 0 0 10 15.5 2.5 2.5 0 0 0 7.5 13m9 0A2.5 2.5 0 0 0 14 15.5a2.5 2.5 0 0 0 2.5 2.5 2.5 2.5 0 0 0 2.5-2.5A2.5 2.5 0 0 0 16.5 13z"/></svg>
+                Scratch Copilot
+            </h2>
+
+            <button id="copilot-load-btn">⚡ AIモデルを読み込む（WebGPU必須）</button>
+
+            <div id="copilot-progress"><div id="copilot-progress-bar"></div></div>
+            <div id="copilot-status">待機中 — 「AIモデルを読み込む」を押してください</div>
+
+            <div id="copilot-messages">
+                <div class="copilot-msg system-note">Scratch Copilot はブラウザ内 LLM を使用します。<br>初回はモデルのダウンロード（約600MB）が発生します。<br>Chrome / Edge（WebGPU対応）が必要です。</div>
+            </div>
+
+            <div class="copilot-input-row">
+                <textarea id="copilot-input" rows="3" placeholder="Scratchのブロックについて聞いてみよう…" disabled></textarea>
+                <button id="copilot-send" disabled>SEND</button>
+            </div>
+        </aside>
+
     </div>
 
     <script>
@@ -914,6 +1105,189 @@
         };
 
         window.onload = initScratchPlayer;
+    </script>
+
+    <!-- ================================================================
+         SCRATCH COPILOT — WebLLM × WebGPU
+         Qiita記事「最小限で動かすWebLLM × WebGPUでブラウザ上の簡易AIチャットモデル」
+         を参考に実装。ESM CDN経由でビルドなし単体HTMLに統合。
+    ================================================================ -->
+    <script type="module">
+        // WebLLM を ESM CDN から読み込む
+        import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+
+        // ── 設定 ──────────────────────────────────────────────────
+        // 軽量モデル: Qwen2.5-1.5B (約1GB) — コーディングアシスタントに適している
+        const MODEL_ID = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
+
+        const SYSTEM_PROMPT = `You are "Scratch Copilot", an expert coding assistant specialized in Scratch programming (scratch.mit.edu).
+You help users with:
+- Scratch block usage and logic (motion, looks, sound, events, control, sensing, operators, variables, my blocks)
+- Sprite and stage programming techniques
+- Game mechanics, animations, and interactive project ideas
+- Debugging Scratch scripts
+- Translating project ideas into Scratch block logic (describe block sequences clearly)
+When showing code, describe it as Scratch block sequences, not text code.
+Respond concisely. Use Japanese if the user writes in Japanese.`;
+
+        // ── 状態 ──────────────────────────────────────────────────
+        let engine = null;
+        let isLoading = false;
+        let isReady = false;
+        const chatHistory = []; // 会話履歴（マルチターン対応）
+
+        // ── DOM参照 ───────────────────────────────────────────────
+        const loadBtn      = document.getElementById('copilot-load-btn');
+        const statusEl     = document.getElementById('copilot-status');
+        const progressBar  = document.getElementById('copilot-progress-bar');
+        const messagesEl   = document.getElementById('copilot-messages');
+        const inputEl      = document.getElementById('copilot-input');
+        const sendBtn      = document.getElementById('copilot-send');
+
+        // ── ユーティリティ ─────────────────────────────────────────
+        function setStatus(text, cls = '') {
+            statusEl.textContent = text;
+            statusEl.className = cls;
+        }
+
+        function setProgress(pct) {
+            progressBar.style.width = Math.min(100, Math.round(pct * 100)) + '%';
+        }
+
+        function addMessage(role, text) {
+            const div = document.createElement('div');
+            div.className = 'copilot-msg ' + role;
+            // コードブロック簡易レンダリング
+            div.innerHTML = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/```([\s\S]*?)```/g, '<pre>$1</pre>')
+                .replace(/`([^`]+)`/g, '<code>$1</code>');
+            messagesEl.appendChild(div);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+            return div;
+        }
+
+        function setInputEnabled(enabled) {
+            inputEl.disabled = !enabled;
+            sendBtn.disabled = !enabled;
+        }
+
+        // ── モデル読み込み ──────────────────────────────────────────
+        async function loadModel() {
+            if (isLoading || isReady) return;
+            isLoading = true;
+            loadBtn.disabled = true;
+
+            // WebGPU 対応チェック
+            if (!navigator.gpu) {
+                setStatus('❌ WebGPU 非対応ブラウザです。Chrome/Edge 121+ をお使いください。', 'error');
+                loadBtn.disabled = false;
+                isLoading = false;
+                return;
+            }
+
+            setStatus('📥 モデルを初期化中… (初回は数分かかります)', 'active');
+            setProgress(0);
+
+            try {
+                engine = await webllm.CreateMLCEngine(MODEL_ID, {
+                    initProgressCallback: (report) => {
+                        const pct = report.progress || 0;
+                        setProgress(pct);
+                        // テキストから余分な部分を除去して表示
+                        const shortText = report.text
+                            ? report.text.replace(/\[.*?\]/g, '').trim().slice(0, 60)
+                            : '';
+                        setStatus(`📥 ${Math.round(pct * 100)}% — ${shortText}`, 'active');
+                    }
+                });
+
+                setProgress(1);
+                isReady = true;
+                isLoading = false;
+                setStatus('✅ Scratch Copilot 準備完了！ブロックについて何でも聞いてね', 'ready');
+                setInputEnabled(true);
+                addMessage('system-note', '— モデルの読み込みが完了しました —');
+            } catch (err) {
+                isLoading = false;
+                loadBtn.disabled = false;
+                setProgress(0);
+                const msg = err?.message || String(err);
+                setStatus('❌ エラー: ' + msg.slice(0, 80), 'error');
+                console.error('[Scratch Copilot] load error:', err);
+            }
+        }
+
+        // ── メッセージ送信 ──────────────────────────────────────────
+        async function sendMessage() {
+            if (!isReady || !engine) return;
+            const text = inputEl.value.trim();
+            if (!text) return;
+
+            inputEl.value = '';
+            setInputEnabled(false);
+            setStatus('💭 考え中…', 'active');
+
+            addMessage('user', text);
+            chatHistory.push({ role: 'user', content: text });
+
+            // 返答バブルを先に作って逐次表示
+            const assistantBubble = addMessage('assistant', '…');
+            let fullReply = '';
+
+            try {
+                const stream = await engine.chat.completions.create({
+                    messages: [
+                        { role: 'system', content: SYSTEM_PROMPT },
+                        ...chatHistory
+                    ],
+                    stream: true,
+                    temperature: 0.7,
+                    max_tokens: 600
+                });
+
+                for await (const chunk of stream) {
+                    const delta = chunk.choices?.[0]?.delta?.content || '';
+                    fullReply += delta;
+                    // リアルタイムでバブルを更新
+                    assistantBubble.innerHTML = fullReply
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/```([\s\S]*?)```/g, '<pre>$1</pre>')
+                        .replace(/`([^`]+)`/g, '<code>$1</code>');
+                    messagesEl.scrollTop = messagesEl.scrollHeight;
+                }
+
+                chatHistory.push({ role: 'assistant', content: fullReply });
+
+                // 履歴が長くなりすぎないよう最新16ターンに制限
+                if (chatHistory.length > 32) chatHistory.splice(0, 2);
+
+                setStatus('✅ Scratch Copilot 準備完了！', 'ready');
+            } catch (err) {
+                assistantBubble.innerHTML = '<span style="color:#ff6688">エラーが発生しました。もう一度お試しください。</span>';
+                setStatus('⚠️ 応答エラー', 'error');
+                console.error('[Scratch Copilot] chat error:', err);
+            } finally {
+                setInputEnabled(true);
+                inputEl.focus();
+            }
+        }
+
+        // ── イベントリスナー ────────────────────────────────────────
+        loadBtn.addEventListener('click', loadModel);
+
+        sendBtn.addEventListener('click', sendMessage);
+
+        inputEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
     </script>
 </body>
 </html>
