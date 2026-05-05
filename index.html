@@ -1055,6 +1055,53 @@
                         if (!projectJsonFile) return;
                         const projectJson = await projectJsonFile.async('string');
                         const projectData = JSON.parse(projectJson);
+
+                        // ── Scratch Copilot用: プロジェクト情報を要約して保存 ──
+                        try {
+                            const targets = projectData.targets || [];
+                            const summary = [];
+
+                            for (const target of targets) {
+                                const isStage = target.isStage;
+                                const name = isStage ? '【ステージ】' : `【スプライト: ${target.name}】`;
+
+                                // ブロック種類を収集（opcode一覧）
+                                const opcodes = [...new Set(
+                                    Object.values(target.blocks || {})
+                                        .filter(b => typeof b === 'object' && b.opcode)
+                                        .map(b => b.opcode)
+                                )];
+
+                                // 変数・リスト名
+                                const vars  = Object.values(target.variables || {}).map(v => v[0]);
+                                const lists = Object.values(target.lists    || {}).map(l => l[0]);
+
+                                // コスチューム名
+                                const costumes = (target.costumes || []).map(c => c.name);
+
+                                let entry = name;
+                                if (vars.length)     entry += `\n  変数: ${vars.join(', ')}`;
+                                if (lists.length)    entry += `\n  リスト: ${lists.join(', ')}`;
+                                if (costumes.length) entry += `\n  コスチューム: ${costumes.join(', ')}`;
+                                if (opcodes.length)  entry += `\n  使用ブロック(opcode): ${opcodes.slice(0, 40).join(', ')}${opcodes.length > 40 ? '...' : ''}`;
+
+                                summary.push(entry);
+                            }
+
+                            // 拡張機能
+                            const extensions = projectData.extensions || [];
+
+                            window.__scratchProjectSummary =
+                                `■ 現在読み込まれているScratchプロジェクトの情報\n` +
+                                (extensions.length ? `使用拡張機能: ${extensions.join(', ')}\n` : '') +
+                                summary.join('\n\n');
+
+                            console.log('[NIGHT-MOD] Project summary stored for Copilot');
+                        } catch(se) {
+                            console.warn('[NIGHT-MOD] Project summary failed:', se);
+                        }
+                        // ─────────────────────────────────────────────────────
+
                         const extensions = projectData.extensions || [];
                         console.log('[NIGHT-MOD] extensions in project:', extensions);
                         for (const extId of extensions) {
@@ -1072,10 +1119,12 @@
                     }
                 };
 
-                fileInput.addEventListener('change', async (e) => {
+                        fileInput.addEventListener('change', async (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
                     statusBar.textContent = "UPLOADING...";
+                    // プロジェクト切り替え時にCopilot用サマリーをリセット
+                    window.__scratchProjectSummary = null;
                     const reader = new FileReader();
                     reader.onload = async (event) => {
                         try {
@@ -1085,6 +1134,21 @@
                             await vm.loadProject(buffer);
                             statusBar.textContent = "CORE ACTIVE";
                             vm.greenFlag();
+                            // Copilotにプロジェクト読込完了を通知
+                            if (window.__scratchProjectSummary) {
+                                const copilotMsgs = document.getElementById('copilot-messages');
+                                const copilotStatus = document.getElementById('copilot-status');
+                                if (copilotMsgs) {
+                                    const note = document.createElement('div');
+                                    note.className = 'copilot-msg system-note';
+                                    note.textContent = `📂 プロジェクト「${file.name}」を認識しました。このプロジェクトについて質問できます。`;
+                                    copilotMsgs.appendChild(note);
+                                    copilotMsgs.scrollTop = copilotMsgs.scrollHeight;
+                                }
+                                if (copilotStatus && copilotStatus.className === 'ready') {
+                                    copilotStatus.textContent = `✅ プロジェクト読込済み — ${file.name} について聞いてね`;
+                                }
+                            }
                         } catch (err) {
                             // errは文字列でthrowされる場合もある（scratch-parserのvalidationError）
                             const msg = (err && err.message) ? err.message : String(err);
@@ -1116,7 +1180,7 @@
         (function() {
 
         // ── 設定 ─────────────────────────────────────────────────
-        const GAS_URL = 'https://script.google.com/macros/s/AKfycbzFUP_rxLQX5r96pXGGw_WnhqxwQ3_NBHHGnfQ2WgCSsNj4kBIScIf54vqRqmT3DmeU/exec';
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbzJgOgZLAu0jIK4VmHEQao22qj7BMyXX_P2X1_JfDPXl876K8tjk8Ma5RYimn4oYvyh/exec';
 
         // ── 状態 ─────────────────────────────────────────────────
         let isReady   = false;
@@ -1231,9 +1295,13 @@
             const bubble = addMessage('assistant', '…');
 
             try {
+                // プロジェクトが読み込まれていればその要約をシステムプロンプトに追加
+                const projectSummary = window.__scratchProjectSummary || null;
+
                 const data = await jsonpCall({
                     message: text,
-                    history: JSON.stringify(chatHistory)
+                    history: JSON.stringify(chatHistory),
+                    projectSummary: projectSummary || ''
                 });
 
                 if (data.error) throw new Error(data.error);
