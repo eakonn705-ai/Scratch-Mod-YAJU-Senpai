@@ -715,13 +715,13 @@
                 Scratch Copilot
             </h2>
 
-            <button id="copilot-load-btn">⚡ AIモデルを読み込む（WebGPU必須）</button>
+            <button id="copilot-load-btn">🔌 Gemini に接続する</button>
 
             <div id="copilot-progress"><div id="copilot-progress-bar"></div></div>
             <div id="copilot-status">待機中 — 「AIモデルを読み込む」を押してください</div>
 
             <div id="copilot-messages">
-                <div class="copilot-msg system-note">Scratch Copilot はブラウザ内 LLM を使用します。<br>初回はモデルのダウンロード（約600MB）が発生します。<br>Chrome / Edge（WebGPU対応）が必要です。</div>
+                <div class="copilot-msg system-note">Scratch Copilot は Gemini 2.0 Flash を使用します。<br>GASのデプロイURLをHTMLに設定すると自動接続されます。<br>APIキーはGAS側で管理され、HTMLには含まれません。</div>
             </div>
 
             <div class="copilot-input-row">
@@ -1109,190 +1109,162 @@
     </script>
 
     <!-- ================================================================
-         SCRATCH COPILOT — WebLLM × WebGPU
-         Qiita記事「最小限で動かすWebLLM × WebGPUでブラウザ上の簡易AIチャットモデル」
-         を参考に実装。ESM CDN経由でビルドなし単体HTMLに統合。
+         SCRATCH COPILOT — Gemini API × GAS プロキシ
+         APIキーはGAS側に隠蔽。HTML側はGASのURLにfetch POSTするだけ。
     ================================================================ -->
-    <script type="module">
-        // WebLLM を ESM CDN から読み込む
-        import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+    <script>
+        (function() {
 
-        // ── 設定 ──────────────────────────────────────────────────
-        // 軽量モデル: Qwen2.5-1.5B (約1GB) — コーディングアシスタントに適している
-        const MODEL_ID = "Qwen2.5-0.5B-Instruct-q4f16_1-MLC";
+        // ── 設定 ─────────────────────────────────────────────────
+        // GASをデプロイしたら、発行されたURLをここに貼り付ける
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbwIrBWFK6kAGqS7atdl5LDHIE_68IgCxwxxyXBs9EpymaUMvspTp89tRc4ZVwnH4UrG/exec';
 
-        const SYSTEM_PROMPT = `あなたは「Scratch Copilot」です。Night-Mod（Scratchカスタム実行環境）専用のコーディングアシスタントです。
-日本語で質問されたら日本語で答えてください。ブロックは「【カテゴリ】ブロック名」の形式で示してください。
+        // ── 状態 ─────────────────────────────────────────────────
+        let isReady  = false;   // GAS URLが設定されているか
+        let isSending = false;
+        // 会話履歴: Gemini形式 { role:'user'|'model', parts:[{text}] }
+        const chatHistory = [];
 
-■ 必須知識（正確に覚えること）
-- Scratch: MITメディアラボ開発のビジュアルプログラミング環境。ステージ480×360px、座標X:-240〜240 / Y:-180〜180。
-- ブロックカテゴリ: 動き・見た目・音・イベント・制御・調べる・演算子・変数・リスト・自分で作る・拡張機能(ペン/音楽/TTS/翻訳)
-- リスト: 1始まりインデックス。追加/削除/挿入/取得/長さ/検索 の操作がある。
-- クローン: 「クローンを作る→クローンされたとき→このクローンを削除する」の3点セット。
-- メッセージ: 「○を送る」でスプライト間通信。「送って待つ」は受信側完了までブロック。
-- 当たり判定: 「○に触れた?」または色判定。ゲームループは「ずっと」内に記述。
-- Night-Mod固有: FPS30〜120変更可、翻訳拡張はGAS経由、sb3ファイルを読み込んで実行。
+        // ── DOM参照 ──────────────────────────────────────────────
+        const loadBtn    = document.getElementById('copilot-load-btn');
+        const statusEl   = document.getElementById('copilot-status');
+        const progressEl = document.getElementById('copilot-progress-bar');
+        const messagesEl = document.getElementById('copilot-messages');
+        const inputEl    = document.getElementById('copilot-input');
+        const sendBtn    = document.getElementById('copilot-send');
 
-回答は簡潔に。コード例はブロック列で示すこと。不明点は「公式ドキュメント(scratch.mit.edu)を確認推奨」と添えること。`;
-
-        // ── 状態 ──────────────────────────────────────────────────
-        let engine = null;
-        let isLoading = false;
-        let isReady = false;
-        const chatHistory = []; // 会話履歴（マルチターン対応）
-
-        // ── DOM参照 ───────────────────────────────────────────────
-        const loadBtn      = document.getElementById('copilot-load-btn');
-        const statusEl     = document.getElementById('copilot-status');
-        const progressBar  = document.getElementById('copilot-progress-bar');
-        const messagesEl   = document.getElementById('copilot-messages');
-        const inputEl      = document.getElementById('copilot-input');
-        const sendBtn      = document.getElementById('copilot-send');
-
-        // ── ユーティリティ ─────────────────────────────────────────
-        function setStatus(text, cls = '') {
+        // ── ユーティリティ ────────────────────────────────────────
+        function setStatus(text, cls='') {
             statusEl.textContent = text;
             statusEl.className = cls;
         }
 
-        function setProgress(pct) {
-            progressBar.style.width = Math.min(100, Math.round(pct * 100)) + '%';
+        function renderText(raw) {
+            return raw
+                .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                .replace(/```([\s\S]*?)```/g,'<pre>$1</pre>')
+                .replace(/`([^`]+)`/g,'<code>$1</code>')
+                .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+                .replace(/\n/g,'<br>');
         }
 
         function addMessage(role, text) {
             const div = document.createElement('div');
             div.className = 'copilot-msg ' + role;
-            // コードブロック簡易レンダリング
-            div.innerHTML = text
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/```([\s\S]*?)```/g, '<pre>$1</pre>')
-                .replace(/`([^`]+)`/g, '<code>$1</code>');
+            div.innerHTML = renderText(text);
             messagesEl.appendChild(div);
             messagesEl.scrollTop = messagesEl.scrollHeight;
             return div;
         }
 
-        function setInputEnabled(enabled) {
-            inputEl.disabled = !enabled;
-            sendBtn.disabled = !enabled;
+        function setInputEnabled(v) {
+            inputEl.disabled = !v;
+            sendBtn.disabled = !v;
         }
 
-        // ── モデル読み込み ──────────────────────────────────────────
-        async function loadModel() {
-            if (isLoading || isReady) return;
-            isLoading = true;
+        // ── 初期化（GAS URL確認）────────────────────────────────
+        function init() {
             loadBtn.disabled = true;
 
-            // WebGPU 対応チェック
-            if (!navigator.gpu) {
-                setStatus('❌ WebGPU 非対応ブラウザです。Chrome/Edge 121+ をお使いください。', 'error');
-                loadBtn.disabled = false;
-                isLoading = false;
+            if (!GAS_URL || GAS_URL.includes('ここに')) {
+                setStatus('⚠️ GAS_URL が未設定です。HTMLを編集して設定してください。', 'error');
+                loadBtn.style.display = 'none';
                 return;
             }
 
-            setStatus('📥 モデルを初期化中… (初回は数分かかります)', 'active');
-            setProgress(0);
-
-            try {
-                engine = await webllm.CreateMLCEngine(MODEL_ID, {
-                    initProgressCallback: (report) => {
-                        const pct = report.progress || 0;
-                        setProgress(pct);
-                        // テキストから余分な部分を除去して表示
-                        const shortText = report.text
-                            ? report.text.replace(/\[.*?\]/g, '').trim().slice(0, 60)
-                            : '';
-                        setStatus(`📥 ${Math.round(pct * 100)}% — ${shortText}`, 'active');
-                    }
+            // 疎通確認
+            setStatus('🔌 GASサーバーに接続中…', 'active');
+            fetch(GAS_URL, { method: 'GET' })
+                .then(r => r.json())
+                .then(d => {
+                    setStatus('✅ 接続完了！Scratchについて何でも聞いてね', 'ready');
+                    isReady = true;
+                    setInputEnabled(true);
+                    loadBtn.style.display = 'none';
+                    addMessage('system-note', '— Gemini 2.0 Flash 接続完了 —');
+                })
+                .catch(err => {
+                    setStatus('❌ GAS接続失敗: ' + err.message, 'error');
+                    loadBtn.disabled = false;
+                    loadBtn.textContent = '🔄 再接続';
                 });
-
-                setProgress(1);
-                isReady = true;
-                isLoading = false;
-                setStatus('✅ Scratch Copilot 準備完了！ブロックについて何でも聞いてね', 'ready');
-                setInputEnabled(true);
-                addMessage('system-note', '— モデルの読み込みが完了しました —');
-            } catch (err) {
-                isLoading = false;
-                loadBtn.disabled = false;
-                setProgress(0);
-                const msg = err?.message || String(err);
-                setStatus('❌ エラー: ' + msg.slice(0, 80), 'error');
-                console.error('[Scratch Copilot] load error:', err);
-            }
         }
 
-        // ── メッセージ送信 ──────────────────────────────────────────
+        // ── メッセージ送信 ────────────────────────────────────────
         async function sendMessage() {
-            if (!isReady || !engine) return;
+            if (!isReady || isSending) return;
             const text = inputEl.value.trim();
             if (!text) return;
 
             inputEl.value = '';
+            isSending = true;
             setInputEnabled(false);
-            setStatus('💭 考え中…', 'active');
+            setStatus('💭 Geminiが考え中…', 'active');
+            progressEl.style.width = '60%';
 
             addMessage('user', text);
-            chatHistory.push({ role: 'user', content: text });
 
-            // 返答バブルを先に作って逐次表示
-            const assistantBubble = addMessage('assistant', '…');
-            let fullReply = '';
+            // 返答バブル（待機中表示）
+            const bubble = addMessage('assistant', '…');
 
             try {
-                const stream = await engine.chat.completions.create({
-                    messages: [
-                        { role: 'system', content: SYSTEM_PROMPT },
-                        ...chatHistory
-                    ],
-                    stream: true,
-                    temperature: 0.7,
-                    max_tokens: 600
+                const res = await fetch(GAS_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' }, // GASはapplication/jsonだとCORSエラーになるためtext/plainで送る
+                    body: JSON.stringify({
+                        message: text,
+                        history: chatHistory   // 会話履歴を毎回送る
+                    })
                 });
 
-                for await (const chunk of stream) {
-                    const delta = chunk.choices?.[0]?.delta?.content || '';
-                    fullReply += delta;
-                    // リアルタイムでバブルを更新
-                    assistantBubble.innerHTML = fullReply
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/```([\s\S]*?)```/g, '<pre>$1</pre>')
-                        .replace(/`([^`]+)`/g, '<code>$1</code>');
-                    messagesEl.scrollTop = messagesEl.scrollHeight;
-                }
+                const data = await res.json();
 
-                chatHistory.push({ role: 'assistant', content: fullReply });
+                if (data.error) throw new Error(data.error);
 
-                // 履歴が長くなりすぎないよう最新16ターンに制限
-                if (chatHistory.length > 32) chatHistory.splice(0, 2);
+                const reply = data.reply || '（応答なし）';
+                bubble.innerHTML = renderText(reply);
+                messagesEl.scrollTop = messagesEl.scrollHeight;
 
-                setStatus('✅ Scratch Copilot 準備完了！', 'ready');
-            } catch (err) {
-                assistantBubble.innerHTML = '<span style="color:#ff6688">エラーが発生しました。もう一度お試しください。</span>';
-                setStatus('⚠️ 応答エラー', 'error');
-                console.error('[Scratch Copilot] chat error:', err);
+                // 履歴に追加（Gemini形式）
+                chatHistory.push({ role: 'user',  parts: [{ text }] });
+                chatHistory.push({ role: 'model', parts: [{ text: reply }] });
+
+                // 最大20ターンに制限
+                if (chatHistory.length > 40) chatHistory.splice(0, 2);
+
+                progressEl.style.width = '100%';
+                setTimeout(() => progressEl.style.width = '0%', 600);
+                setStatus('✅ 接続完了！Scratchについて何でも聞いてね', 'ready');
+
+            } catch(err) {
+                bubble.innerHTML = '<span style="color:#ff6688">❌ エラー: ' + err.message + '</span>';
+                setStatus('⚠️ 送信エラー。GASのデプロイ設定を確認してください。', 'error');
+                progressEl.style.width = '0%';
+                console.error('[Scratch Copilot]', err);
             } finally {
+                isSending = false;
                 setInputEnabled(true);
                 inputEl.focus();
             }
         }
 
-        // ── イベントリスナー ────────────────────────────────────────
-        loadBtn.addEventListener('click', loadModel);
-
+        // ── イベントリスナー ──────────────────────────────────────
+        loadBtn.addEventListener('click', init);
         sendBtn.addEventListener('click', sendMessage);
-
-        inputEl.addEventListener('keydown', (e) => {
+        inputEl.addEventListener('keydown', e => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 sendMessage();
             }
         });
+
+        // ページ読込時に自動接続を試みる
+        window.addEventListener('load', () => {
+            // DOMMContentLoaded後に少し待ってから起動
+            setTimeout(init, 500);
+        });
+
+        })();
     </script>
 </body>
 </html>
