@@ -1109,20 +1109,18 @@
     </script>
 
     <!-- ================================================================
-         SCRATCH COPILOT — Gemini API × GAS プロキシ
-         APIキーはGAS側に隠蔽。HTML側はGASのURLにfetch POSTするだけ。
+         SCRATCH COPILOT — Gemini API × GAS プロキシ (JSONP版)
+         scriptタグ動的生成方式でCORSを完全回避。
     ================================================================ -->
     <script>
         (function() {
 
         // ── 設定 ─────────────────────────────────────────────────
-        // GASをデプロイしたら、発行されたURLをここに貼り付ける
-        const GAS_URL = 'https://script.google.com/macros/s/AKfycbwIrBWFK6kAGqS7atdl5LDHIE_68IgCxwxxyXBs9EpymaUMvspTp89tRc4ZVwnH4UrG/exec';
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbzFUP_rxLQX5r96pXGGw_WnhqxwQ3_NBHHGnfQ2WgCSsNj4kBIScIf54vqRqmT3DmeU/exec';
 
         // ── 状態 ─────────────────────────────────────────────────
-        let isReady  = false;   // GAS URLが設定されているか
+        let isReady   = false;
         let isSending = false;
-        // 会話履歴: Gemini形式 { role:'user'|'model', parts:[{text}] }
         const chatHistory = [];
 
         // ── DOM参照 ──────────────────────────────────────────────
@@ -1132,6 +1130,39 @@
         const messagesEl = document.getElementById('copilot-messages');
         const inputEl    = document.getElementById('copilot-input');
         const sendBtn    = document.getElementById('copilot-send');
+
+        // ── JSONP 呼び出し ────────────────────────────────────────
+        let jsonpCounter = 0;
+        function jsonpCall(params, timeout) {
+            return new Promise((resolve, reject) => {
+                const cbName = '__scratchCopilot_cb_' + (jsonpCounter++);
+                const timer  = setTimeout(() => {
+                    delete window[cbName];
+                    if (script.parentNode) script.remove();
+                    reject(new Error('タイムアウト（30秒）'));
+                }, timeout || 30000);
+
+                window[cbName] = (data) => {
+                    clearTimeout(timer);
+                    delete window[cbName];
+                    if (script.parentNode) script.remove();
+                    resolve(data);
+                };
+
+                const qs = Object.entries({ ...params, callback: cbName })
+                    .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v))
+                    .join('&');
+
+                const script = document.createElement('script');
+                script.src = GAS_URL + '?' + qs;
+                script.onerror = () => {
+                    clearTimeout(timer);
+                    delete window[cbName];
+                    reject(new Error('スクリプト読み込みエラー'));
+                };
+                document.head.appendChild(script);
+            });
+        }
 
         // ── ユーティリティ ────────────────────────────────────────
         function setStatus(text, cls='') {
@@ -1162,32 +1193,26 @@
             sendBtn.disabled = !v;
         }
 
-        // ── 初期化（GAS URL確認）────────────────────────────────
-        function init() {
+        // ── 初期化（疎通確認）────────────────────────────────────
+        async function init() {
             loadBtn.disabled = true;
-
-            if (!GAS_URL || GAS_URL.includes('ここに')) {
-                setStatus('⚠️ GAS_URL が未設定です。HTMLを編集して設定してください。', 'error');
-                loadBtn.style.display = 'none';
-                return;
-            }
-
-            // 疎通確認
             setStatus('🔌 GASサーバーに接続中…', 'active');
-            fetch(GAS_URL, { method: 'GET' })
-                .then(r => r.json())
-                .then(d => {
+            try {
+                const data = await jsonpCall({}, 10000);
+                if (data.status === 'ok') {
                     setStatus('✅ 接続完了！Scratchについて何でも聞いてね', 'ready');
                     isReady = true;
                     setInputEnabled(true);
                     loadBtn.style.display = 'none';
-                    addMessage('system-note', '— Gemini 2.0 Flash 接続完了 —');
-                })
-                .catch(err => {
-                    setStatus('❌ GAS接続失敗: ' + err.message, 'error');
-                    loadBtn.disabled = false;
-                    loadBtn.textContent = '🔄 再接続';
-                });
+                    addMessage('system-note', '— Gemini 接続完了 —');
+                } else {
+                    throw new Error(data.error || '不明なエラー');
+                }
+            } catch(err) {
+                setStatus('❌ 接続失敗: ' + err.message, 'error');
+                loadBtn.disabled = false;
+                loadBtn.textContent = '🔄 再接続';
+            }
         }
 
         // ── メッセージ送信 ────────────────────────────────────────
@@ -1203,21 +1228,13 @@
             progressEl.style.width = '60%';
 
             addMessage('user', text);
-
-            // 返答バブル（待機中表示）
             const bubble = addMessage('assistant', '…');
 
             try {
-                const res = await fetch(GAS_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' }, // GASはapplication/jsonだとCORSエラーになるためtext/plainで送る
-                    body: JSON.stringify({
-                        message: text,
-                        history: chatHistory   // 会話履歴を毎回送る
-                    })
+                const data = await jsonpCall({
+                    message: text,
+                    history: JSON.stringify(chatHistory)
                 });
-
-                const data = await res.json();
 
                 if (data.error) throw new Error(data.error);
 
@@ -1225,11 +1242,8 @@
                 bubble.innerHTML = renderText(reply);
                 messagesEl.scrollTop = messagesEl.scrollHeight;
 
-                // 履歴に追加（Gemini形式）
-                chatHistory.push({ role: 'user',  parts: [{ text }] });
+                chatHistory.push({ role: 'user',  parts: [{ text: text }] });
                 chatHistory.push({ role: 'model', parts: [{ text: reply }] });
-
-                // 最大20ターンに制限
                 if (chatHistory.length > 40) chatHistory.splice(0, 2);
 
                 progressEl.style.width = '100%';
@@ -1237,8 +1251,8 @@
                 setStatus('✅ 接続完了！Scratchについて何でも聞いてね', 'ready');
 
             } catch(err) {
-                bubble.innerHTML = '<span style="color:#ff6688">❌ エラー: ' + err.message + '</span>';
-                setStatus('⚠️ 送信エラー。GASのデプロイ設定を確認してください。', 'error');
+                bubble.innerHTML = '<span style="color:#ff6688">❌ ' + err.message + '</span>';
+                setStatus('⚠️ エラー: ' + err.message, 'error');
                 progressEl.style.width = '0%';
                 console.error('[Scratch Copilot]', err);
             } finally {
@@ -1258,11 +1272,7 @@
             }
         });
 
-        // ページ読込時に自動接続を試みる
-        window.addEventListener('load', () => {
-            // DOMMContentLoaded後に少し待ってから起動
-            setTimeout(init, 500);
-        });
+        window.addEventListener('load', () => setTimeout(init, 500));
 
         })();
     </script>
