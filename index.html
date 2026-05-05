@@ -1318,8 +1318,8 @@
                 const data = await jsonpCall({
                     message: text,
                     history: JSON.stringify(chatHistory),
-                    projectSummary: projectSummary || '',
-                    docs: copilotDocs || ''
+                    projectSummary: projectSummary || ''
+                    // docs は URL長超過を避けるため送信しない（GAS側のBASE_SYSTEM_PROMPTを使用）
                 });
 
                 if (data.error) throw new Error(data.error);
