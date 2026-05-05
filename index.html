@@ -1180,11 +1180,12 @@
         (function() {
 
         // ── 設定 ─────────────────────────────────────────────────
-        const GAS_URL = 'https://script.google.com/macros/s/AKfycbxj_bEmdCfGJqZ880W_GDfjPehdSC6e_Lk34wgvvIvmvoemwUFgBihMVAp6bYBys_Uh/exec';
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbz195e0U7jS4gyv2O82m3V8m2C32ssPYkJW5VQt2mSX_AWAgeXXvYYGBNo2oyDpFYse/exec';
 
         // ── 状態 ─────────────────────────────────────────────────
         let isReady   = false;
         let isSending = false;
+        let copilotDocs = '';   // copilot-docs.txtの内容を保持
         const chatHistory = [];
 
         // ── DOM参照 ──────────────────────────────────────────────
@@ -1262,15 +1263,31 @@
             loadBtn.disabled = true;
             setStatus('🔌 GASサーバーに接続中…', 'active');
             try {
-                const data = await jsonpCall({}, 10000);
-                if (data.status === 'ok') {
-                    setStatus('✅ 接続完了！Scratchについて何でも聞いてね', 'ready');
+                // GAS疎通確認 と copilot-docs.txt 読み込みを並行実行
+                const [gasResult, docsResult] = await Promise.allSettled([
+                    jsonpCall({}, 10000),
+                    fetch('./copilot-docs.txt').then(r => r.ok ? r.text() : Promise.reject('not found'))
+                ]);
+
+                // copilot-docs.txt の結果
+                if (docsResult.status === 'fulfilled') {
+                    copilotDocs = docsResult.value;
+                    console.log('[Scratch Copilot] copilot-docs.txt loaded:', copilotDocs.length, 'chars');
+                } else {
+                    console.warn('[Scratch Copilot] copilot-docs.txt not found, continuing without it.');
+                }
+
+                // GAS接続の結果
+                const data = gasResult.status === 'fulfilled' ? gasResult.value : null;
+                if (data && data.status === 'ok') {
+                    const docsNote = copilotDocs ? ' 📄ナレッジ読込済み' : '';
+                    setStatus('✅ 接続完了！Scratchについて何でも聞いてね' + docsNote, 'ready');
                     isReady = true;
                     setInputEnabled(true);
                     loadBtn.style.display = 'none';
-                    addMessage('system-note', '— Gemini 接続完了 —');
+                    addMessage('system-note', '— Gemini 接続完了' + docsNote + ' —');
                 } else {
-                    throw new Error(data.error || '不明なエラー');
+                    throw new Error(gasResult.reason?.message || '不明なエラー');
                 }
             } catch(err) {
                 setStatus('❌ 接続失敗: ' + err.message, 'error');
@@ -1301,7 +1318,8 @@
                 const data = await jsonpCall({
                     message: text,
                     history: JSON.stringify(chatHistory),
-                    projectSummary: projectSummary || ''
+                    projectSummary: projectSummary || '',
+                    docs: copilotDocs || ''
                 });
 
                 if (data.error) throw new Error(data.error);
