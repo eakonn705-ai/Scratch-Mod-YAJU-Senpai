@@ -559,6 +559,10 @@
         #copilot-load-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
         @media (max-width: 1100px) {
+            html, body {
+                height: auto;
+                overflow-y: auto;
+            }
             body {
                 align-items: flex-start;
                 padding: 0;
@@ -566,7 +570,7 @@
             #main-layout {
                 grid-template-columns: 1fr;
                 height: auto;
-                overflow-y: auto;
+                overflow-y: visible;
                 padding: 12px;
                 gap: 16px;
             }
