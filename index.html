@@ -1237,6 +1237,7 @@
                                     // JPEG quality 0.4 で base64（約8KB以内）
                                     const dataUrl = tmpCanvas.toDataURL('image/jpeg', 0.4);
                                     screenshotB64 = dataUrl.replace(/^data:image\/jpeg;base64,/, '');
+                                    window.__scratchScreenshot = screenshotB64;
                                     console.log('[NIGHT-MOD] Screenshot captured:', screenshotB64.length, 'chars');
                                 }
                             } catch(se) {
@@ -1330,7 +1331,7 @@
         (function() {
 
         // ── 設定 ─────────────────────────────────────────────────
-        const GAS_URL = 'https://script.google.com/macros/s/AKfycbzGjXMNU7wJ0wuN3JLD8RCWFlKWQ-rRKHlR-5EmLfEWwdiYixBqt6kAl6cD_uTzLGFn/exec';
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbxB93BVJP2-ALcwdPsbIiExWpf48guy7-pgUdu6l-3Owotk3EpTURbcJPtezfjv-MPB/exec';
         // sb3ローダー側から参照できるようwindowに公開
         window.__copilotGasUrl = GAS_URL;
 
@@ -1570,12 +1571,13 @@
             try {
                 // プロジェクトが読み込まれていればその要約をシステムプロンプトに追加
                 const projectSummary = window.__scratchProjectSummary || null;
+                const screenshot     = window.__scratchScreenshot    || '';
 
                 const data = await jsonpCall({
                     message: text,
                     history: JSON.stringify(chatHistory),
-                    projectSummary: projectSummary || ''
-                    // docs は URL長超過を避けるため送信しない（GAS側のBASE_SYSTEM_PROMPTを使用）
+                    projectSummary: projectSummary || '',
+                    screenshot: screenshot
                 });
 
                 if (data.error) throw new Error(data.error);
