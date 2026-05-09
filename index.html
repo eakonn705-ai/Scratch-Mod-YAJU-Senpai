@@ -1189,20 +1189,84 @@
                             await loadProjectExtensions(buffer);
                             await vm.loadProject(buffer);
                             statusBar.textContent = "CORE ACTIVE";
-                            vm.greenFlag();
-                            // Copilotにプロジェクト読込完了を通知
-                            if (window.__scratchProjectSummary) {
-                                const copilotMsgs = document.getElementById('copilot-messages');
-                                const copilotStatus = document.getElementById('copilot-status');
-                                if (copilotMsgs) {
-                                    const note = document.createElement('div');
-                                    note.className = 'copilot-msg system-note';
-                                    note.textContent = `📂 プロジェクト「${file.name}」を認識しました。このプロジェクトについて質問できます。`;
-                                    copilotMsgs.appendChild(note);
-                                    copilotMsgs.scrollTop = copilotMsgs.scrollHeight;
+
+                            // ── スクリーンショット撮影（緑の旗を押す前）──────
+                            let screenshotB64 = '';
+                            try {
+                                const srcCanvas = document.querySelector('#canvas-container canvas');
+                                if (srcCanvas) {
+                                    // 縮小用の一時キャンバス（160×120）
+                                    const tmpCanvas = document.createElement('canvas');
+                                    tmpCanvas.width  = 160;
+                                    tmpCanvas.height = 120;
+                                    const ctx = tmpCanvas.getContext('2d');
+                                    ctx.drawImage(srcCanvas, 0, 0, 160, 120);
+                                    // JPEG quality 0.4 で base64（約8KB以内）
+                                    const dataUrl = tmpCanvas.toDataURL('image/jpeg', 0.4);
+                                    screenshotB64 = dataUrl.replace(/^data:image\/jpeg;base64,/, '');
+                                    console.log('[NIGHT-MOD] Screenshot captured:', screenshotB64.length, 'chars');
                                 }
+                            } catch(se) {
+                                console.warn('[NIGHT-MOD] Screenshot failed:', se);
+                            }
+
+                            vm.greenFlag();
+
+                            // ── Copilotにプロジェクト読込完了を通知 ──────────
+                            const copilotMsgs   = document.getElementById('copilot-messages');
+                            const copilotStatus = document.getElementById('copilot-status');
+
+                            if (window.__scratchProjectSummary && copilotMsgs) {
+                                const note = document.createElement('div');
+                                note.className   = 'copilot-msg system-note';
+                                note.textContent = `📂 プロジェクト「${file.name}」を認識しました。分析中…`;
+                                copilotMsgs.appendChild(note);
+                                copilotMsgs.scrollTop = copilotMsgs.scrollHeight;
+
                                 if (copilotStatus && copilotStatus.className === 'ready') {
-                                    copilotStatus.textContent = `✅ プロジェクト読込済み — ${file.name} について聞いてね`;
+                                    copilotStatus.textContent = `🔍 プロジェクトを分析中…`;
+                                }
+
+                                // ── 自動分析リクエスト（GAS type=analyze）────
+                                // GAS_URL は Copilotスクリプト側の変数なので window 経由で参照
+                                const gasUrl = window.__copilotGasUrl;
+                                if (gasUrl) {
+                                    // 分析用バブルを先に作る
+                                    const bubble = document.createElement('div');
+                                    bubble.className = 'copilot-msg assistant';
+                                    bubble.textContent = '🔍 プロジェクトを分析しています…';
+                                    copilotMsgs.appendChild(bubble);
+                                    copilotMsgs.scrollTop = copilotMsgs.scrollHeight;
+
+                                    // JSONP呼び出し（window.__copilotJsonpCall を使用）
+                                    try {
+                                        const params = {
+                                            type: 'analyze',
+                                            projectSummary: window.__scratchProjectSummary || '',
+                                            screenshot: screenshotB64
+                                        };
+                                        const data = await window.__copilotJsonpCall(params, 45000);
+                                        if (data.error) throw new Error(data.error);
+                                        const reply = data.reply || '（分析結果なし）';
+                                        bubble.innerHTML = reply
+                                            .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                                            .replace(/```([\s\S]*?)```/g,'<pre>$1</pre>')
+                                            .replace(/`([^`]+)`/g,'<code>$1</code>')
+                                            .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+                                            .replace(/\n/g,'<br>');
+                                        copilotMsgs.scrollTop = copilotMsgs.scrollHeight;
+                                        if (copilotStatus) {
+                                            copilotStatus.textContent = `✅ プロジェクト読込済み — ${file.name} について聞いてね`;
+                                            copilotStatus.className = 'ready';
+                                        }
+                                        note.textContent = `📂 プロジェクト「${file.name}」の自動分析が完了しました`;
+                                    } catch(ae) {
+                                        bubble.innerHTML = `<span style="color:#ff6688">⚠️ 分析失敗: ${ae.message}</span>`;
+                                        if (copilotStatus) {
+                                            copilotStatus.textContent = `✅ プロジェクト読込済み — ${file.name}`;
+                                            copilotStatus.className = 'ready';
+                                        }
+                                    }
                                 }
                             }
                         } catch (err) {
@@ -1236,7 +1300,9 @@
         (function() {
 
         // ── 設定 ─────────────────────────────────────────────────
-        const GAS_URL = 'https://script.google.com/macros/s/AKfycbwfJ2nFBgwb2K9yT2sjWTxvRcCpOeB6kneOQWww_1StRDwEYqqJK4Ke8DkE2T_dwUDo/exec';
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbxy7xvZa7t9zCllFyQ-eHhIbEiANnfb27Oa4W7jhlh8OvgjAhKIEuUqWMb19HtRQBHv/exec';
+        // sb3ローダー側から参照できるようwindowに公開
+        window.__copilotGasUrl = GAS_URL;
 
         // ── 状態 ─────────────────────────────────────────────────
         let isReady   = false;
@@ -1284,6 +1350,8 @@
                 document.head.appendChild(script);
             });
         }
+        // sb3ローダー側から使えるようwindowに公開
+        window.__copilotJsonpCall = jsonpCall;
 
         // ── ユーティリティ ────────────────────────────────────────
         function setStatus(text, cls='') {
