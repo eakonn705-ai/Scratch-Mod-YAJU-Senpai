@@ -479,8 +479,41 @@
             padding: 7px 10px;
             border-radius: 6px;
             word-break: break-word;
-            white-space: pre-wrap;
+            white-space: normal;
         }
+        .copilot-msg pre {
+            background: rgba(0,0,0,0.45);
+            border: 1px solid rgba(255,100,200,0.2);
+            border-radius: 4px;
+            padding: 6px 8px;
+            overflow-x: auto;
+            margin: 4px 0;
+            font-size: 11px;
+            white-space: pre;
+        }
+        .copilot-msg pre code {
+            background: none;
+            padding: 0;
+            font-size: 11px;
+            color: #e0c0ff;
+        }
+        .copilot-msg code {
+            background: rgba(255,255,255,0.1);
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-size: 11px;
+            color: #ffddaa;
+            font-family: monospace;
+        }
+        .copilot-msg ul, .copilot-msg ol {
+            padding-left: 18px;
+            margin: 4px 0;
+        }
+        .copilot-msg li {
+            margin: 2px 0;
+        }
+        .copilot-msg strong { color: #ffddff; }
+        .copilot-msg em { color: #ddbbff; font-style: italic; }
         .copilot-msg.user {
             background: rgba(0, 212, 255, 0.12);
             border: 1px solid rgba(0, 212, 255, 0.25);
@@ -1248,12 +1281,9 @@
                                         const data = await window.__copilotJsonpCall(params, 45000);
                                         if (data.error) throw new Error(data.error);
                                         const reply = data.reply || '（分析結果なし）';
-                                        bubble.innerHTML = reply
-                                            .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-                                            .replace(/```([\s\S]*?)```/g,'<pre>$1</pre>')
-                                            .replace(/`([^`]+)`/g,'<code>$1</code>')
-                                            .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
-                                            .replace(/\n/g,'<br>');
+                                        bubble.innerHTML = window.__copilotRenderText
+                                            ? window.__copilotRenderText(reply)
+                                            : reply;
                                         copilotMsgs.scrollTop = copilotMsgs.scrollHeight;
                                         if (copilotStatus) {
                                             copilotStatus.textContent = `✅ プロジェクト読込済み — ${file.name} について聞いてね`;
@@ -1352,6 +1382,7 @@
         }
         // sb3ローダー側から使えるようwindowに公開
         window.__copilotJsonpCall = jsonpCall;
+        window.__copilotRenderText = renderText;
 
         // ── ユーティリティ ────────────────────────────────────────
         function setStatus(text, cls='') {
@@ -1360,12 +1391,113 @@
         }
 
         function renderText(raw) {
-            return raw
-                .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-                .replace(/```([\s\S]*?)```/g,'<pre>$1</pre>')
-                .replace(/`([^`]+)`/g,'<code>$1</code>')
-                .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
-                .replace(/\n/g,'<br>');
+            // 1. HTMLエスケープ
+            let t = raw
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            // 2. コードブロック（```）を先に退避してインライン処理から守る
+            const codeBlocks = [];
+            t = t.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+                const idx = codeBlocks.length;
+                codeBlocks.push(`<pre><code class="lang-${lang || 'text'}">${code.trimEnd()}</code></pre>`);
+                return `\x00CODE${idx}\x00`;
+            });
+
+            // 3. インラインコード
+            t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+            // 4. 行単位処理
+            const lines = t.split('\n');
+            const out = [];
+            let inList = false;
+            let inOList = false;
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+
+                // コードブロックプレースホルダー
+                if (/^\x00CODE\d+\x00$/.test(line.trim())) {
+                    if (inList)  { out.push('</ul>'); inList  = false; }
+                    if (inOList) { out.push('</ol>'); inOList = false; }
+                    out.push(line.trim());
+                    continue;
+                }
+
+                // 水平線
+                if (/^---+$/.test(line.trim())) {
+                    if (inList)  { out.push('</ul>'); inList  = false; }
+                    if (inOList) { out.push('</ol>'); inOList = false; }
+                    out.push('<hr style="border:none;border-top:1px solid rgba(255,100,200,0.3);margin:6px 0;">');
+                    continue;
+                }
+
+                // 見出し
+                const h3 = line.match(/^###\s+(.+)/);
+                const h2 = line.match(/^##\s+(.+)/);
+                const h1 = line.match(/^#\s+(.+)/);
+                if (h1 || h2 || h3) {
+                    if (inList)  { out.push('</ul>'); inList  = false; }
+                    if (inOList) { out.push('</ol>'); inOList = false; }
+                    const txt = (h3||h2||h1)[1];
+                    const sz  = h1 ? '1.05em' : h2 ? '0.98em' : '0.93em';
+                    out.push(`<div style="font-weight:bold;font-size:${sz};color:#ff99dd;margin:6px 0 2px;">${applyInline(txt)}</div>`);
+                    continue;
+                }
+
+                // 番号付きリスト
+                const olMatch = line.match(/^(\d+)\.\s+(.+)/);
+                if (olMatch) {
+                    if (inList)  { out.push('</ul>'); inList  = false; }
+                    if (!inOList) { out.push('<ol style="margin:4px 0 4px 16px;padding:0;">'); inOList = true; }
+                    out.push(`<li style="margin:2px 0;">${applyInline(olMatch[2])}</li>`);
+                    continue;
+                }
+
+                // 箇条書き（-, *, •）
+                const ulMatch = line.match(/^[-*•]\s+(.+)/);
+                if (ulMatch) {
+                    if (inOList) { out.push('</ol>'); inOList = false; }
+                    if (!inList) { out.push('<ul style="margin:4px 0 4px 16px;padding:0;">'); inList = true; }
+                    out.push(`<li style="margin:2px 0;">${applyInline(ulMatch[1])}</li>`);
+                    continue;
+                }
+
+                // 空行
+                if (line.trim() === '') {
+                    if (inList)  { out.push('</ul>'); inList  = false; }
+                    if (inOList) { out.push('</ol>'); inOList = false; }
+                    out.push('<br>');
+                    continue;
+                }
+
+                // 通常テキスト
+                if (inList)  { out.push('</ul>'); inList  = false; }
+                if (inOList) { out.push('</ol>'); inOList = false; }
+                out.push(`<div style="margin:1px 0;">${applyInline(line)}</div>`);
+            }
+
+            if (inList)  out.push('</ul>');
+            if (inOList) out.push('</ol>');
+
+            // 5. コードブロックを復元
+            let result = out.join('');
+            codeBlocks.forEach((block, idx) => {
+                result = result.replace(`\x00CODE${idx}\x00`, block);
+            });
+
+            return result;
+        }
+
+        // インライン修飾（bold, italic, inlineCode は既処理）
+        function applyInline(t) {
+            return t
+                .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                .replace(/__(.+?)__/g, '<strong>$1</strong>')
+                .replace(/_(.+?)_/g, '<em>$1</em>');
         }
 
         function addMessage(role, text) {
